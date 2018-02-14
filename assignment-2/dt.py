@@ -53,14 +53,14 @@ def readCSV(csv_file):
     return data, parameters
 
 
-def entropy(examples, target_attribute, attributes):
+def entropy(examples, target_attribute, attributes, all_parameters):
     """Calculates the entropy of the given data set for the target attr"""
 
     frequency = {}
     data_entropy = 0.0
 
     # find index of the target attribute
-    i = attributes.index(target_attribute)
+    i = all_parameters.index(target_attribute)
 
     # Calculate the frequency of each of the values in the target_attribute
     for entry in examples:
@@ -77,7 +77,7 @@ def entropy(examples, target_attribute, attributes):
     return data_entropy
 
 
-def gain_discrete(examples, target_attribute, attributes, attr):
+def gain_discrete(examples, target_attribute, attributes, attr, all_parameters):
     """
     Calculates the information gain (reduction in entropy) that would
     result by splitting the data on the chosen attribute (attr).
@@ -86,7 +86,7 @@ def gain_discrete(examples, target_attribute, attributes, attr):
     subset_entropy = 0.0
 
     # find index of the chosen attr
-    i = attributes.index(attr)
+    i = all_parameters.index(attr)
 
     # Calculate the frequency of each of the values in the chosen attr
     for entry in examples:
@@ -101,21 +101,21 @@ def gain_discrete(examples, target_attribute, attributes, attr):
         val_prob = frequency[val] / sum(frequency.values())
         data_subset = [entry for entry in examples if entry[i] == val]
         subset_entropy += val_prob * \
-            entropy(data_subset, target_attribute, attributes)
+            entropy(data_subset, target_attribute, attributes, all_parameters)
 
     # Subtract the entropy of the chosen attribute from the entropy of the
     # whole data set with respect to the target attribute (and return it)
-    return (entropy(examples, target_attribute, attributes) - subset_entropy)
+    return (entropy(examples, target_attribute, attributes, all_parameters) - subset_entropy)
 
 
-def gain_continuous(examples, target_attribute, attributes, attr):
+def gain_continuous(examples, target_attribute, attributes, attr, all_parameters):
     """
     Calculates the information gain (reduction in entropy) that would
     result by splitting the data on the chosen attribute (attr).
     """
 
     # find index of the chosen attr
-    i = attributes.index(attr)
+    i = all_parameters.index(attr)
     value_list = np.sort(np.array(examples).transpose()[i])
     min_value = value_list[0]
     max_value = value_list[-1]
@@ -135,9 +135,9 @@ def gain_continuous(examples, target_attribute, attributes, attr):
                 more_subset.append(entry)
         subset_entropy = 0.0
         subset_entropy += len(less_subset) * \
-            entropy(less_subset, target_attribute, attributes) / len(examples)
+            entropy(less_subset, target_attribute, attributes, all_parameters) / len(examples)
         subset_entropy += len(more_subset) * \
-            entropy(more_subset, target_attribute, attributes) / len(examples)
+            entropy(more_subset, target_attribute, attributes, all_parameters) / len(examples)
 
         if (best_subset_entropy < subset_entropy):
             best_subset_entropy = subset_entropy
@@ -145,11 +145,11 @@ def gain_continuous(examples, target_attribute, attributes, attr):
 
         divide += STEP_SIZE * range_value / 100
 
-    return (entropy(examples, target_attribute, attributes) -
+    return (entropy(examples, target_attribute, attributes, all_parameters) -
             best_subset_entropy), best_divide
 
 
-def find_best_attribute(examples, target_attribute, attributes):
+def find_best_attribute(examples, target_attribute, attributes, all_parameters):
     best_attribute = attributes[0]
     max_gain = 0
     best_divide = None
@@ -157,15 +157,16 @@ def find_best_attribute(examples, target_attribute, attributes):
         if a == target_attribute or a == "id":
             continue
 
-        attr_index = attributes.index(a)
+        attr_index = all_parameters.index(a)
         options = np.unique(np.array(examples).transpose()
                             [attr_index]).shape[0]
         if options < 50:
-            newGain = gain_discrete(examples, target_attribute, attributes, a)
+            newGain = gain_discrete(
+                examples, target_attribute, attributes, a, all_parameters)
             divide = None  # Only for continuos
         else:
             newGain, divide = gain_continuous(
-                examples, target_attribute, attributes, a)
+                examples, target_attribute, attributes, a, all_parameters)
         if newGain > max_gain:
             max_gain = newGain
             best_attribute = a
@@ -173,15 +174,15 @@ def find_best_attribute(examples, target_attribute, attributes):
     return best_attribute, best_divide
 
 
-def ID3(examples, target_attribute, attributes, depth, MAX_DEPTH):
+def ID3(examples, target_attribute, attributes, depth, MAX_DEPTH, all_parameters):
 
     # Create root node
     root = Node()
-    price_index = 1
+    target_index = all_parameters.index(target_attribute)
 
     # Return single node, if all examples have same class
     # Find list of unique values in target_attribute of examples
-    target_list = np.unique(np.array(examples).transpose()[price_index])
+    target_list = np.unique(np.array(examples).transpose()[target_index])
 
     if target_list.shape[0] == 1:
         root.answer = target_list[0]
@@ -190,45 +191,45 @@ def ID3(examples, target_attribute, attributes, depth, MAX_DEPTH):
     # If attributes is empty, return tree with most common value
     if len(attributes) == 0 or depth >= MAX_DEPTH:
         root.answer = np.argmax(np.bincount(
-            np.array(examples).transpose()[price_index]))
+            np.array(examples).transpose()[target_index]))
         return root
 
     # Main algo
     best_attribute, divide = find_best_attribute(
-        examples, target_attribute, attributes)
+        examples, target_attribute, attributes, all_parameters)
 
     root.attribute = best_attribute
     root.divide = divide
 
     if (root.divide is None):   # For discrete data
-        attr_index = attributes.index(best_attribute)
+        attr_index = all_parameters.index(best_attribute)
         options = np.unique(np.array(examples).transpose()[attr_index])
         for value in options:
             example_subset = [
                 entry for entry in examples if entry[attr_index] == value]
             branch = ID3(example_subset, target_attribute, list(
-                set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH)
+                set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH, all_parameters)
             branch.condition = value
             root.children.append(branch)
         # Add a default node, for values outside options
         # available in training data
         branch = Node()
         branch.answer = np.argmax(np.bincount(
-            np.array(examples).transpose()[price_index]))
+            np.array(examples).transpose()[target_index]))
         root.children.append(branch)
     else:                       # For continuous data (divide not none)
-        attr_index = attributes.index(best_attribute)
+        attr_index = all_parameters.index(best_attribute)
         less_subset = [
             entry for entry in examples if entry[attr_index] < divide]
         branch = ID3(less_subset, target_attribute, list(
-            set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH)
+            set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH, all_parameters)
         branch.condition = 0
         root.children.append(branch)
 
         more_subset = [
             entry for entry in examples if entry[attr_index] >= divide]
         branch = ID3(more_subset, target_attribute, list(
-            set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH)
+            set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH, all_parameters)
         branch.condition = 1
         root.children.append(branch)
 
@@ -288,7 +289,7 @@ if __name__ == '__main__':
 
     examples = np.array(examples).transpose()
 
-    tree = ID3(examples, "price", parameters, 0, MAX_DEPTH)
+    tree = ID3(examples, "price", parameters, 0, MAX_DEPTH, parameters)
 
     # Make predictions
     test_data, para = readCSV(test_file)
@@ -305,12 +306,19 @@ if __name__ == '__main__':
 
     test_cases = np.array(test_cases).transpose()
 
-    print make_prediction(test_cases[0], tree, para)
-    # price = []
-    # for test_case in test_cases:
-    #     price.append(make_prediction(test_case, tree, para))
+    # print make_prediction(test_cases[0], tree, para)
+    # print make_prediction(test_cases[1], tree, para)
+    # print make_prediction(test_cases[2], tree, para)
+    # print make_prediction(test_cases[3], tree, para)
+    # print make_prediction(test_cases[4], tree, para)
+    # print make_prediction(test_cases[5], tree, para)
+    # print make_prediction(test_cases[6], tree, para)
+    # print make_prediction(test_cases[7], tree, para)
+    price = []
+    for test_case in test_cases:
+        price.append(make_prediction(test_case, tree, para))
 
-    # ids = [int(x) for x in test_data['id']]
-    # out = np.asarray([ids, price])
-    # np.savetxt("submission.csv", out.transpose(), '%d',
-    #            delimiter=",", header="id,price", comments='')
+    ids = [int(x) for x in test_data['id']]
+    out = np.asarray([ids, price])
+    np.savetxt("submission.csv", out.transpose(), '%d',
+               delimiter=",", header="id,price", comments='')

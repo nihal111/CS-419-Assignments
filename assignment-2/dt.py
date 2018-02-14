@@ -7,14 +7,17 @@ from math import log
 class Node:
     """A node in the decision tree"""
 
-    def __init__(self, attribute="Unset"):
-        self.attribute = attribute
+    def __init__(self):
+        self.attribute = "Leaf"  # By default a leaf, unless attr specified
         self.children = []
-        self.answer = None
+        self.condition = None  # For every child node
+        self.answer = None  # Only for leaf nodes, answer for the filter
         self.divide = None  # For continuous distribution only
 
     def __str__(self):
-        return "Name- " + self.attribute + " Answer- " + str(self.answer)
+        s = "Name- " + self.attribute + " Answer- " + str(self.answer) + \
+            " Condition-" + str(self.condition) + " Divide-" + str(self.divide)
+        return s
 
 
 def checkArgs():
@@ -26,11 +29,11 @@ def checkArgs():
     train_file = sys.argv[1]
     test_file = sys.argv[2]
     try:
-        depth = int(sys.argv[3])
+        MAX_DEPTH = int(sys.argv[3])
     except ValueError:
         print "Please enter an integer for the depth argument"
 
-    return train_file, test_file, depth
+    return train_file, test_file, MAX_DEPTH
 
 
 def readCSV(csv_file):
@@ -117,12 +120,10 @@ def gain_continuous(examples, target_attribute, attributes, attr):
     min_value = value_list[0]
     max_value = value_list[-1]
     range_value = max_value - min_value
-    STEP_SIZE = 20  # in percent
+    STEP_SIZE = 5  # in percent
     divide = min_value + STEP_SIZE * range_value / 100
     best_divide = min_value
     best_subset_entropy = 0.0
-
-    print value_list
 
     while (divide < max_value - STEP_SIZE * range_value / 100):
         less_subset = []
@@ -144,7 +145,6 @@ def gain_continuous(examples, target_attribute, attributes, attr):
 
         divide += STEP_SIZE * range_value / 100
 
-    print "best_divide = " + str(best_divide)
     return (entropy(examples, target_attribute, attributes) -
             best_subset_entropy), best_divide
 
@@ -156,7 +156,6 @@ def find_best_attribute(examples, target_attribute, attributes):
     for a in attributes:
         if a == target_attribute or a == "id":
             continue
-        print "Checking for attribute- " + a
 
         attr_index = attributes.index(a)
         options = np.unique(np.array(examples).transpose()
@@ -167,7 +166,6 @@ def find_best_attribute(examples, target_attribute, attributes):
         else:
             newGain, divide = gain_continuous(
                 examples, target_attribute, attributes, a)
-        print "Gain- " + str(newGain)
         if newGain > max_gain:
             max_gain = newGain
             best_attribute = a
@@ -175,11 +173,10 @@ def find_best_attribute(examples, target_attribute, attributes):
     return best_attribute, best_divide
 
 
-def ID3(examples, target_attribute, attributes):
+def ID3(examples, target_attribute, attributes, depth, MAX_DEPTH):
 
     # Create root node
     root = Node()
-    print attributes
     price_index = 1
 
     # Return single node, if all examples have same class
@@ -191,41 +188,91 @@ def ID3(examples, target_attribute, attributes):
         return root
 
     # If attributes is empty, return tree with most common value
-    if len(attributes) == 0:
+    if len(attributes) == 0 or depth >= MAX_DEPTH:
         root.answer = np.argmax(np.bincount(
             np.array(examples).transpose()[price_index]))
         return root
 
     # Main algo
-    best_attribute, best_divide = find_best_attribute(
+    best_attribute, divide = find_best_attribute(
         examples, target_attribute, attributes)
 
-    print best_attribute
-
     root.attribute = best_attribute
-    root.divide = best_divide
+    root.divide = divide
 
-    attr_index = attributes.index(best_attribute)
-    options = np.unique(np.array(examples).transpose()[attr_index])
-    for value in options:
+    if (root.divide is None):   # For discrete data
+        attr_index = attributes.index(best_attribute)
+        options = np.unique(np.array(examples).transpose()[attr_index])
+        for value in options:
+            example_subset = [
+                entry for entry in examples if entry[attr_index] == value]
+            branch = ID3(example_subset, target_attribute, list(
+                set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH)
+            branch.condition = value
+            root.children.append(branch)
+        # Add a default node, for values outside options
+        # available in training data
         branch = Node()
-        example_subset = [
-            entry for entry in examples if entry[attr_index] == value]
-        branch = ID3(example_subset, target_attribute, list(
-            set(attributes) - set([best_attribute])))
+        branch.answer = np.argmax(np.bincount(
+            np.array(examples).transpose()[price_index]))
+        root.children.append(branch)
+    else:                       # For continuous data (divide not none)
+        attr_index = attributes.index(best_attribute)
+        less_subset = [
+            entry for entry in examples if entry[attr_index] < divide]
+        branch = ID3(less_subset, target_attribute, list(
+            set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH)
+        branch.condition = 0
         root.children.append(branch)
 
-    # Add a default node, for values outside options available in training data
-    branch = Node()
-    branch.answer = np.argmax(np.bincount(
-        np.array(examples).transpose()[price_index]))
-    root.children.append(branch)
+        more_subset = [
+            entry for entry in examples if entry[attr_index] >= divide]
+        branch = ID3(more_subset, target_attribute, list(
+            set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH)
+        branch.condition = 1
+        root.children.append(branch)
 
+    # print "Depth- " + str(depth) + " best_attribute:" + best_attribute + " best_divide:" + str(divide) + " condition:" + str(root.condition)
     return root
 
 
+def make_prediction(test_case, tree, attributes):
+    if tree.attribute == "Leaf":
+        print "Leaf node found"
+        return tree.answer
+
+    attr_index = attributes.index(tree.attribute)
+    print
+    print "Checking for " + tree.attribute
+    val = test_case[attr_index]
+    print "Value is " + str(val)
+    print
+    if (tree.divide is None):   # Discrete Values
+        print "Discretely classified"
+        for child in tree.children:
+            if (child.condition is None):
+                none_child = child
+            if (val == child.condition):
+                print "Found child with value, going under"
+                return make_prediction(test_case, child, attributes)
+        print "No child with value, going under none"
+        return make_prediction(test_case, none_child, attributes)
+
+    else:                       # Continuous Values
+        print "Continuously classified"
+        if (val < tree.divide):
+            ans = 0
+        else:
+            ans = 1
+        print "greater than divide " + str(ans)
+        for child in tree.children:
+            print "Found child with value, going under"
+            if (child.condition == ans):
+                return make_prediction(test_case, child, attributes)
+
+
 if __name__ == '__main__':
-    train_file, test_file, depth = checkArgs()
+    train_file, test_file, MAX_DEPTH = checkArgs()
 
     train_data, parameters = readCSV(train_file)
 
@@ -241,6 +288,29 @@ if __name__ == '__main__':
 
     examples = np.array(examples).transpose()
 
-    tree = ID3(examples, "price", parameters)
+    tree = ID3(examples, "price", parameters, 0, MAX_DEPTH)
 
-    print tree
+    # Make predictions
+    test_data, para = readCSV(test_file)
+    price = []
+
+    test_cases = [[0]] * len(para)
+
+    for i in xrange(0, len(para)):
+        # test_cases[i] = [float(x) for x in train_data[para[i]]]
+        if (para[i] == "floors"):
+            test_cases[i] = [int(2 * float(x)) for x in test_data[para[i]]]
+        else:
+            test_cases[i] = [int(x) for x in test_data[para[i]]]
+
+    test_cases = np.array(test_cases).transpose()
+
+    print make_prediction(test_cases[0], tree, para)
+    # price = []
+    # for test_case in test_cases:
+    #     price.append(make_prediction(test_case, tree, para))
+
+    # ids = [int(x) for x in test_data['id']]
+    # out = np.asarray([ids, price])
+    # np.savetxt("submission.csv", out.transpose(), '%d',
+    #            delimiter=",", header="id,price", comments='')

@@ -63,11 +63,11 @@ def entropy(examples, target_attribute, attributes, all_parameters):
     i = all_parameters.index(target_attribute)
 
     # Calculate the frequency of each of the values in the target_attribute
-    for entry in examples:
-        if (entry[i] in frequency):
-            frequency[entry[i]] += 1.0
+    for example in examples:
+        if (example[i] in frequency):
+            frequency[example[i]] += 1.0
         else:
-            frequency[entry[i]] = 1.0
+            frequency[example[i]] = 1.0
 
     # Calculate the entropy of the data for the target attr
     for freq in frequency.values():
@@ -77,7 +77,8 @@ def entropy(examples, target_attribute, attributes, all_parameters):
     return data_entropy
 
 
-def gain_discrete(examples, target_attribute, attributes, attr, all_parameters):
+def gain_discrete(examples, target_attribute,
+                  attributes, attr, all_parameters):
     """
     Calculates the information gain (reduction in entropy) that would
     result by splitting the data on the chosen attribute (attr).
@@ -89,26 +90,30 @@ def gain_discrete(examples, target_attribute, attributes, attr, all_parameters):
     i = all_parameters.index(attr)
 
     # Calculate the frequency of each of the values in the chosen attr
-    for entry in examples:
-        if (entry[i] in frequency):
-            frequency[entry[i]] += 1.0
+    for example in examples:
+        if (example[i] in frequency):
+            frequency[example[i]] += 1.0
         else:
-            frequency[entry[i]] = 1.0
+            frequency[example[i]] = 1.0
 
-    # Calculate the sum of the entropy for each subset of records weighted
-    # by their probability of occuring in the training set.
+    # Calculate the weighted sum of entropies in each subset of values
     for val in frequency.keys():
         val_prob = frequency[val] / sum(frequency.values())
-        data_subset = [entry for entry in examples if entry[i] == val]
+        data_subset = [example for example in examples if example[i] == val]
         subset_entropy += val_prob * \
             entropy(data_subset, target_attribute, attributes, all_parameters)
 
     # Subtract the entropy of the chosen attribute from the entropy of the
     # whole data set with respect to the target attribute (and return it)
-    return (entropy(examples, target_attribute, attributes, all_parameters) - subset_entropy)
+    return (entropy(examples,
+                    target_attribute,
+                    attributes,
+                    all_parameters
+                    ) - subset_entropy)
 
 
-def gain_continuous(examples, target_attribute, attributes, attr, all_parameters):
+def gain_continuous(examples, target_attribute,
+                    attributes, attr, all_parameters):
     """
     Calculates the information gain (reduction in entropy) that would
     result by splitting the data on the chosen attribute (attr).
@@ -128,16 +133,18 @@ def gain_continuous(examples, target_attribute, attributes, attr, all_parameters
     while (divide < max_value - STEP_SIZE * range_value / 100):
         less_subset = []
         more_subset = []
-        for entry in examples:
-            if (entry[i] < divide):
-                less_subset.append(entry)
+        for example in examples:
+            if (example[i] < divide):
+                less_subset.append(example)
             else:
-                more_subset.append(entry)
+                more_subset.append(example)
         subset_entropy = 0.0
         subset_entropy += len(less_subset) * \
-            entropy(less_subset, target_attribute, attributes, all_parameters) / len(examples)
+            entropy(less_subset, target_attribute, attributes,
+                    all_parameters) / len(examples)
         subset_entropy += len(more_subset) * \
-            entropy(more_subset, target_attribute, attributes, all_parameters) / len(examples)
+            entropy(more_subset, target_attribute, attributes,
+                    all_parameters) / len(examples)
 
         if (best_subset_entropy < subset_entropy):
             best_subset_entropy = subset_entropy
@@ -149,7 +156,8 @@ def gain_continuous(examples, target_attribute, attributes, attr, all_parameters
             best_subset_entropy), best_divide
 
 
-def find_best_attribute(examples, target_attribute, attributes, all_parameters):
+def find_best_attribute(examples, target_attribute,
+                        attributes, all_parameters):
     best_attribute = attributes[0]
     max_gain = 0
     best_divide = None
@@ -174,7 +182,8 @@ def find_best_attribute(examples, target_attribute, attributes, all_parameters):
     return best_attribute, best_divide
 
 
-def ID3(examples, target_attribute, attributes, depth, MAX_DEPTH, all_parameters):
+def ID3(examples, target_attribute, attributes,
+        depth, MAX_DEPTH, all_parameters):
 
     # Create root node
     root = Node()
@@ -189,7 +198,7 @@ def ID3(examples, target_attribute, attributes, depth, MAX_DEPTH, all_parameters
         return root
 
     # If attributes is empty, return tree with most common value
-    if len(attributes) == 0 or depth >= MAX_DEPTH:
+    if len(attributes) == 0 or (depth >= MAX_DEPTH and MAX_DEPTH != -1):
         root.answer = np.argmax(np.bincount(
             np.array(examples).transpose()[target_index]))
         return root
@@ -205,10 +214,11 @@ def ID3(examples, target_attribute, attributes, depth, MAX_DEPTH, all_parameters
         attr_index = all_parameters.index(best_attribute)
         options = np.unique(np.array(examples).transpose()[attr_index])
         for value in options:
-            example_subset = [
-                entry for entry in examples if entry[attr_index] == value]
-            branch = ID3(example_subset, target_attribute, list(
-                set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH, all_parameters)
+            example_subset = [example for example in
+                              examples if example[attr_index] == value]
+            branch = ID3(example_subset, target_attribute,
+                         list(set(attributes) - set([best_attribute])),
+                         depth + 1, MAX_DEPTH, all_parameters)
             branch.condition = value
             root.children.append(branch)
         # Add a default node, for values outside options
@@ -220,54 +230,44 @@ def ID3(examples, target_attribute, attributes, depth, MAX_DEPTH, all_parameters
     else:                       # For continuous data (divide not none)
         attr_index = all_parameters.index(best_attribute)
         less_subset = [
-            entry for entry in examples if entry[attr_index] < divide]
-        branch = ID3(less_subset, target_attribute, list(
-            set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH, all_parameters)
+            example for example in examples if example[attr_index] < divide]
+        branch = ID3(less_subset, target_attribute,
+                     list(set(attributes) - set([best_attribute])),
+                     depth + 1, MAX_DEPTH, all_parameters)
         branch.condition = 0
         root.children.append(branch)
 
         more_subset = [
-            entry for entry in examples if entry[attr_index] >= divide]
-        branch = ID3(more_subset, target_attribute, list(
-            set(attributes) - set([best_attribute])), depth + 1, MAX_DEPTH, all_parameters)
+            example for example in examples if example[attr_index] >= divide]
+        branch = ID3(more_subset, target_attribute,
+                     list(set(attributes) - set([best_attribute])),
+                     depth + 1, MAX_DEPTH, all_parameters)
         branch.condition = 1
         root.children.append(branch)
 
-    # print "Depth- " + str(depth) + " best_attribute:" + best_attribute + " best_divide:" + str(divide) + " condition:" + str(root.condition)
     return root
 
 
 def make_prediction(test_case, tree, attributes):
     if tree.attribute == "Leaf":
-        print "Leaf node found"
         return tree.answer
 
     attr_index = attributes.index(tree.attribute)
-    print
-    print "Checking for " + tree.attribute
     val = test_case[attr_index]
-    print "Value is " + str(val)
-    print
     if (tree.divide is None):   # Discrete Values
-        print "Discretely classified"
         for child in tree.children:
             if (child.condition is None):
                 none_child = child
             if (val == child.condition):
-                print "Found child with value, going under"
                 return make_prediction(test_case, child, attributes)
-        print "No child with value, going under none"
         return make_prediction(test_case, none_child, attributes)
 
     else:                       # Continuous Values
-        print "Continuously classified"
         if (val < tree.divide):
             ans = 0
         else:
             ans = 1
-        print "greater than divide " + str(ans)
         for child in tree.children:
-            print "Found child with value, going under"
             if (child.condition == ans):
                 return make_prediction(test_case, child, attributes)
 
@@ -289,7 +289,9 @@ if __name__ == '__main__':
 
     examples = np.array(examples).transpose()
 
-    tree = ID3(examples, "price", parameters, 0, MAX_DEPTH, parameters)
+    tree = ID3(examples, "price",
+               list(set(parameters) - set(['price', 'id'])),
+               0, MAX_DEPTH, parameters)
 
     # Make predictions
     test_data, para = readCSV(test_file)
@@ -306,14 +308,6 @@ if __name__ == '__main__':
 
     test_cases = np.array(test_cases).transpose()
 
-    # print make_prediction(test_cases[0], tree, para)
-    # print make_prediction(test_cases[1], tree, para)
-    # print make_prediction(test_cases[2], tree, para)
-    # print make_prediction(test_cases[3], tree, para)
-    # print make_prediction(test_cases[4], tree, para)
-    # print make_prediction(test_cases[5], tree, para)
-    # print make_prediction(test_cases[6], tree, para)
-    # print make_prediction(test_cases[7], tree, para)
     price = []
     for test_case in test_cases:
         price.append(make_prediction(test_case, tree, para))

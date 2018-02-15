@@ -2,6 +2,14 @@ import csv
 import sys
 import numpy as np
 from math import log
+import json
+
+# Max values of a feature in training data,
+# after which it is considered continuous
+MAX_VALUES = 10
+# Step size to find the divide point in
+# features having continuous distributions
+STEP_SIZE = 20  # in percent
 
 
 class Node:
@@ -125,7 +133,6 @@ def gain_continuous(examples, target_attribute,
     min_value = value_list[0]
     max_value = value_list[-1]
     range_value = max_value - min_value
-    STEP_SIZE = 5  # in percent
     divide = min_value + STEP_SIZE * range_value / 100
     best_divide = min_value
     best_subset_entropy = 0.0
@@ -162,13 +169,10 @@ def find_best_attribute(examples, target_attribute,
     max_gain = 0
     best_divide = None
     for a in attributes:
-        if a == target_attribute or a == "id":
-            continue
-
         attr_index = all_parameters.index(a)
         options = np.unique(np.array(examples).transpose()
                             [attr_index]).shape[0]
-        if options < 50:
+        if options < MAX_VALUES:
             newGain = gain_discrete(
                 examples, target_attribute, attributes, a, all_parameters)
             divide = None  # Only for continuos
@@ -227,23 +231,26 @@ def ID3(examples, target_attribute, attributes,
         branch.answer = np.argmax(np.bincount(
             np.array(examples).transpose()[target_index]))
         root.children.append(branch)
+
     else:                       # For continuous data (divide not none)
         attr_index = all_parameters.index(best_attribute)
         less_subset = [
             example for example in examples if example[attr_index] < divide]
-        branch = ID3(less_subset, target_attribute,
-                     list(set(attributes) - set([best_attribute])),
-                     depth + 1, MAX_DEPTH, all_parameters)
-        branch.condition = 0
-        root.children.append(branch)
+        if len(less_subset) > 0:
+            branch = ID3(less_subset, target_attribute,
+                         list(set(attributes) - set([best_attribute])),
+                         depth + 1, MAX_DEPTH, all_parameters)
+            branch.condition = 0
+            root.children.append(branch)
 
         more_subset = [
             example for example in examples if example[attr_index] >= divide]
-        branch = ID3(more_subset, target_attribute,
-                     list(set(attributes) - set([best_attribute])),
-                     depth + 1, MAX_DEPTH, all_parameters)
-        branch.condition = 1
-        root.children.append(branch)
+        if len(more_subset) > 0:
+            branch = ID3(more_subset, target_attribute,
+                         list(set(attributes) - set([best_attribute])),
+                         depth + 1, MAX_DEPTH, all_parameters)
+            branch.condition = 1
+            root.children.append(branch)
 
     return root
 
@@ -272,6 +279,25 @@ def make_prediction(test_case, tree, attributes):
                 return make_prediction(test_case, child, attributes)
 
 
+def make_tree(node):
+    tree_dict = {}
+    if node.condition is not None:
+        tree_dict["condition"] = node.condition
+    if node.divide is not None:
+        tree_dict["divide"] = node.divide
+    if node.attribute is not "Leaf":
+        tree_dict["attribute"] = node.attribute
+    else:
+        tree_dict["answer"] = node.answer
+
+    if len(node.children) > 0:
+        tree_dict["children"] = []
+    for child in node.children:
+        child_tree = make_tree(child)
+        tree_dict["children"].append(child_tree)
+    return tree_dict
+
+
 if __name__ == '__main__':
     train_file, test_file, MAX_DEPTH = checkArgs()
 
@@ -289,11 +315,20 @@ if __name__ == '__main__':
 
     examples = np.array(examples).transpose()
 
+    print "Starting Training"
     tree = ID3(examples, "price",
                list(set(parameters) - set(['price', 'id'])),
                0, MAX_DEPTH, parameters)
 
+    print "Training Complete\nDumping tree to json"
+
+    tree_dict = make_tree(tree)
+    with open('json_tree.txt', 'w') as outfile:
+        json.dump(tree_dict, outfile, indent=2)
+
     # Make predictions
+    print "Making predictions"
+
     test_data, para = readCSV(test_file)
     price = []
 
@@ -316,3 +351,5 @@ if __name__ == '__main__':
     out = np.asarray([ids, price])
     np.savetxt("submission.csv", out.transpose(), '%d',
                delimiter=",", header="id,price", comments='')
+
+    print "Predictions complete. Saved to submission.csv"

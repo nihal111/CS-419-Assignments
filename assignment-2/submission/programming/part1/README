@@ -1,0 +1,9 @@
+To enable the stopping condition for THRESH1 in the decision tree, 
+simply set the value of THRESH1 to any positive value in line 14 of dt.py
+
+Setting THRESH1 = -1 would effectively mean there is no limit on the minimum number
+of leaf nodes in the tree.
+
+The code relevant to the THRESH1 condition can be found in lines-
+L229-L230
+L263-L267

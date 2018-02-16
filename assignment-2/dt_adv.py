@@ -10,8 +10,6 @@ MAX_VALUES = 20
 # Step size to find the divide point in
 # features having continuous distributions
 STEP_SIZE = 20  # in percent
-# Max number of leaf nodes
-THRESH1 = 10
 # Hold out size for cross validation, in percent
 HOLD_OUT = 30
 # Find best tree out of ITERATION trees

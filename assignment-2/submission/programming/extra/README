@@ -1,0 +1,6 @@
+Innovations:
+
+1. Tree bagging (Random Forest): Multiple trees are built with 70% of the data randomly sampled from the training data. Performaceof each tree is calculated on the hold out set. This gives us a indicative measure of how accurate the tree's classification is. Multiple trees are bagged during training.
+Each test sample is passed through all of the trees and the majority vote is taken as the final answer for the price of the test sample.
+
+2. 

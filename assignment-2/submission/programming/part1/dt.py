@@ -12,10 +12,6 @@ MAX_VALUES = 20
 STEP_SIZE = 20  # in percent
 # Minimum number of leaf nodes
 THRESH1 = -1
-# Hold out size for cross validation, in percent
-HOLD_OUT = 0
-# Find best tree out of ITERATION trees
-ITERATIONS = 1
 
 
 class Node:
@@ -303,15 +299,6 @@ def make_prediction(test_case, tree, attributes):
         for child in tree.children:
             if (child.condition == ans):
                 return make_prediction(test_case, child, attributes)
-    print "This is so wrong"
-    print "Attribute:" + tree.attribute + " | Divide:" + str(tree.divide) + " | Condition:" + str(tree.condition) + " | val:" + str(val)
-    if (val < tree.divide):
-        ans = 0
-    else:
-        ans = 1
-    print "Ans- " + str(ans) + "\nChildren:"
-    for child in tree.children:
-        print child.condition
 
 
 def make_tree(node):
@@ -358,27 +345,17 @@ if __name__ == '__main__':
     best_accuracy = 0.0
     tree_list = []
 
-    for i in xrange(0, ITERATIONS):
-        # print "\nIteration: " + str(i)
-        # np.random.shuffle(examples)
+    print "Starting Training"
+    tree = ID3(examples, "price",
+               list(set(parameters) - set(['price', 'id'])),
+               0, MAX_DEPTH, parameters)
 
-        # # Split into training data and cross validation data
-        # print "Splitting into " + str(100 - HOLD_OUT) + ":" + str(HOLD_OUT)
-        breaker = (100 - HOLD_OUT) * len(examples) / 100
-        examples_training, examples_test = examples[:breaker, :], \
-            examples[breaker:, :]
+    print "Training Complete"
 
-        print "Starting Training"
-        tree = ID3(examples_training, "price",
-                   list(set(parameters) - set(['price', 'id'])),
-                   0, MAX_DEPTH, parameters)
-
-        print "Training Complete"
-
-        print "Dumping tree to json"
-        tree_dict = make_tree(tree)
-        with open('json_tree.txt', 'w') as outfile:
-            json.dump(tree_dict, outfile, indent=2)
+    print "Dumping tree to json"
+    tree_dict = make_tree(tree)
+    with open('json_tree.txt', 'w') as outfile:
+        json.dump(tree_dict, outfile, indent=2)
 
     # Make predictions
     print "Making predictions"

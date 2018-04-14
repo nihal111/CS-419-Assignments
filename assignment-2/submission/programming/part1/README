@@ -5,5 +5,5 @@ Setting THRESH1 = -1 would effectively mean there is no limit on the minimum num
 of leaf nodes in the tree.
 
 The code relevant to the THRESH1 condition can be found in lines-
-L229-L230
-L263-L267
+L225-L226
+259-L263

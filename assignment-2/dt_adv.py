@@ -13,7 +13,7 @@ STEP_SIZE = 20  # in percent
 # Hold out size for cross validation, in percent
 HOLD_OUT = 30
 # Find best tree out of ITERATION trees
-ITERATIONS = 1000
+ITERATIONS = 10
 
 
 class Node:
@@ -25,6 +25,8 @@ class Node:
         self.condition = None  # For every child node
         self.answer = None  # Only for leaf nodes, answer for the filter
         self.divide = None  # For continuous distribution only
+        self.parent = None  # Every child node has a parent
+        self.default = False  # Is it the default answer node
 
     def __str__(self):
         s = "Name- " + self.attribute + " Answer- " + str(self.answer) + \
@@ -191,10 +193,11 @@ def find_best_attribute(examples, target_attribute,
 
 
 def ID3(examples, target_attribute, attributes,
-        depth, MAX_DEPTH, all_parameters):
+        depth, MAX_DEPTH, all_parameters, parent):
 
     # Create root node
     root = Node()
+    root.parent = parent
     target_index = all_parameters.index(target_attribute)
 
     # Return single node, if all examples have same class
@@ -226,7 +229,7 @@ def ID3(examples, target_attribute, attributes,
                               examples if example[attr_index] == value]
             branch = ID3(example_subset, target_attribute,
                          list(set(attributes) - set([best_attribute])),
-                         depth + 1, MAX_DEPTH, all_parameters)
+                         depth + 1, MAX_DEPTH, all_parameters, root)
             branch.condition = value
             root.children.append(branch)
         # Add a default node, for values outside options
@@ -234,6 +237,8 @@ def ID3(examples, target_attribute, attributes,
         branch = Node()
         branch.answer = np.argmax(np.bincount(
             np.array(examples).transpose()[target_index]))
+        branch.parent = root
+        branch.default = True
         root.children.append(branch)
 
     else:                       # For continuous data (divide not None)
@@ -243,7 +248,7 @@ def ID3(examples, target_attribute, attributes,
         if len(less_subset) > 0:
             branch = ID3(less_subset, target_attribute,
                          list(set(attributes) - set([best_attribute])),
-                         depth + 1, MAX_DEPTH, all_parameters)
+                         depth + 1, MAX_DEPTH, all_parameters, root)
             branch.condition = 0
             root.children.append(branch)
 
@@ -252,20 +257,18 @@ def ID3(examples, target_attribute, attributes,
         if len(more_subset) > 0:
             branch = ID3(more_subset, target_attribute,
                          list(set(attributes) - set([best_attribute])),
-                         depth + 1, MAX_DEPTH, all_parameters)
+                         depth + 1, MAX_DEPTH, all_parameters, root)
             branch.condition = 1
             root.children.append(branch)
 
-        # Corner case: If despite divide being such that all samples have
-        # value for the respective feature on one side of divide, that feature
-        # is chosen as the best_attribute. Test samples may have value on other
-        # side of the divide.
-        if len(root.children) < 2:
-            branch = Node()
-            branch.condition = (1 - root.children[0].condition)
-            branch.answer = np.argmax(np.bincount(
-                np.array(examples).transpose()[target_index]))
-            root.children.append(branch)
+        # Default case, condition = 2, majority vote
+        branch = Node()
+        branch.condition = 2
+        branch.answer = np.argmax(np.bincount(
+            np.array(examples).transpose()[target_index]))
+        branch.parent = None
+        branch.default = True
+        root.children.append(branch)
 
     return root
 
@@ -292,15 +295,11 @@ def make_prediction(test_case, tree, attributes):
         for child in tree.children:
             if (child.condition == ans):
                 return make_prediction(test_case, child, attributes)
-    print "This is so wrong"
-    print "Attribute:" + tree.attribute + " | Divide:" + str(tree.divide) + " | Condition:" + str(tree.condition) + " | val:" + str(val)
-    if (val < tree.divide):
-        ans = 0
-    else:
-        ans = 1
-    print "Ans- " + str(ans) + "\nChildren:"
-    for child in tree.children:
-        print child.condition
+        # If not yet returned, default case (majority). ans = 2
+        ans = 2
+        for child in tree.children:
+            if (child.condition == ans):
+                return make_prediction(test_case, child, attributes)
 
 
 def make_tree(node):
@@ -320,6 +319,26 @@ def make_tree(node):
         child_tree = make_tree(child)
         tree_dict["children"].append(child_tree)
     return tree_dict
+
+
+def find_nodes(tree):
+    nodes = []
+    nodes.append(tree)
+    for node in tree.children:
+        nodes += find_nodes(node)
+    return nodes
+
+
+def find_accuracy(tree, examples_test, parameters):
+    # Find cross val error
+    price_index = parameters.index("price")
+    correct = 0
+    for test_case in examples_test:
+        prediction = make_prediction(test_case, tree, parameters)
+        if (prediction == test_case[price_index]):
+            correct += 1
+    accuracy = correct * 100.0 / len(examples_test)
+    return accuracy
 
 
 if __name__ == '__main__':
@@ -349,35 +368,55 @@ if __name__ == '__main__':
 
     for i in xrange(0, ITERATIONS):
         print "\nIteration: " + str(i)
-        np.random.shuffle(examples)
+        # np.random.shuffle(examples)
 
         # Split into training data and cross validation data
-        print "Splitting into " + str(100 - HOLD_OUT) + ":" + str(HOLD_OUT)
+        print "\tSplitting into " + str(100 - HOLD_OUT) + ":" + str(HOLD_OUT)
         breaker = (100 - HOLD_OUT) * len(examples) / 100
         examples_training, examples_test = examples[:breaker, :], \
             examples[breaker:, :]
 
-        print "Starting Training"
+        print "\tStarting Training"
         tree = ID3(examples_training, "price",
                    list(set(parameters) - set(['price', 'id'])),
-                   0, MAX_DEPTH, parameters)
+                   0, MAX_DEPTH, parameters, None)
 
-        print "Training Complete"
+        print "\tTraining Complete"
 
         # print "Dumping tree to json"
         # tree_dict = make_tree(tree)
         # with open('json_tree.txt', 'w') as outfile:
         #     json.dump(tree_dict, outfile, indent=2)
 
-        # Find cross val error
-        price_index = parameters.index("price")
-        correct = 0
-        for test_case in examples_test:
-            prediction = make_prediction(test_case, tree, parameters)
-            if (prediction == test_case[price_index]):
-                correct += 1
-        accuracy = correct * 100.0 / len(examples_test)
-        print "Categorization Accuracy- " + str(accuracy)
+        improvement = 1
+        cycle = 0
+        while (improvement > 0.01):
+            base_accuracy = find_accuracy(tree, examples_test, parameters)
+            cycle += 1
+            print "\n\tPruning cycle " + str(cycle) + \
+                " Base Accuracy- " + str(base_accuracy)
+            nodes = find_nodes(tree)
+            best_node = None
+            best_node_accuracy = 0
+            for node in nodes:
+                # For all non default children nodes
+                if not node.default and node.parent is not None:
+                    node.parent.children.remove(node)
+                    if best_node_accuracy < find_accuracy(
+                            tree, examples_test, parameters):
+                        best_node = node
+                        best_node_accuracy = find_accuracy(
+                            tree, examples_test, parameters)
+                        print "\t\tRemoving Node- " + node.attribute + \
+                            " Accuracy: " + str(best_node_accuracy)
+                    node.parent.children.append(node)
+            print "\tBest Node- " + best_node.attribute + " Accuracy: " + \
+                str(best_node_accuracy)
+            best_node.parent.children.remove(best_node)
+            improvement = best_node_accuracy - base_accuracy
+
+        accuracy = find_accuracy(tree, examples_test, parameters)
+        print "\n\tPruned Tree Accuracy- " + str(accuracy)
 
         tree_list.append(tree)
         if accuracy > best_accuracy:

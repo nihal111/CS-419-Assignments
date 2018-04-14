@@ -1,0 +1,8 @@
+The categorization accuracy received on test set available on Kaggle is 0.51133 with
+
+100 nodes in the hidden layer
+Learning rate of 0.001
+No regularization.
+ReLU activation function.
+Batch size of 500.
+100 Epochs

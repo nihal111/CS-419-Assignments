@@ -3,10 +3,10 @@ import numpy as np
 import sys
 import csv
 
-HIDDEN_LAYER_NODES = 100
+HIDDEN_LAYER_NODES = 256
 LEARNING_RATE = 0.001
 BATCH_SIZE = 500
-EPOCHS = 20
+EPOCHS = 100
 
 
 def create_graph():
@@ -54,7 +54,7 @@ def create_graph():
     return graph, optimiser, init_op, accuracy, x, y, cross_entropy, y_
 
 
-def train(train_examples, train_labels, test_examples, test_labels, test_samples):
+def train(train_examples, train_labels, test_examples, test_labels, test_samples, ids):
     graph, optimiser, init_op, accuracy, x, y, cross_entropy, y_ = create_graph()
     session_conf = tf.ConfigProto(
         # device_count={
@@ -65,8 +65,14 @@ def train(train_examples, train_labels, test_examples, test_labels, test_samples
         ),
     )
     with tf.Session(graph=graph, config=session_conf) as sess:
-        # initialise the variables
-        sess.run(init_op)
+        saver = tf.train.Saver()
+        try:
+            saver.restore(sess, "./save/model.ckpt")
+            print("Model restored.")
+        except:
+            # initialise the variables
+            sess.run(init_op)
+            print("Model initialised.")
         total_batch = int(len(train_examples) / BATCH_SIZE)
         for epoch in range(EPOCHS):
             avg_cost = 0
@@ -76,17 +82,21 @@ def train(train_examples, train_labels, test_examples, test_labels, test_samples
                 _, c = sess.run([optimiser, cross_entropy],
                                 feed_dict={x: batch_x, y: batch_y})
                 avg_cost += c / total_batch
-                print("i: {}, avg_cost:{}".format(i, avg_cost))
-            print("Epoch:", (epoch + 1), "cost =", "{:.3f}".format(avg_cost))
+                # print("i: {}, avg_cost:{}".format(i, avg_cost))
+            print("Epoch:{} cost={:.3f}".format((epoch + 1), avg_cost))
         print(sess.run(accuracy, feed_dict={
               x: test_examples, y: test_labels}))
 
+        save_path = saver.save(sess, "./save/model.ckpt")
+        print("Model saved in path: %s" % save_path)
+
         test_prediction = sess.run(y_, feed_dict={x: test_samples})
-        print test_prediction
-        # decoded_predictions = [np.where(r == 1)[0][0] for r in test_prediction]
-        # out = np.asarray([ids, decoded_predictions])
-        # np.savetxt("submission.csv", out.transpose(), '%d',
-        #            delimiter=",", header="id,labels", comments='')
+        decoded_predictions = np.argmax(test_prediction, axis=1)
+        print decoded_predictions
+
+        out = np.asarray([ids, decoded_predictions])
+        np.savetxt("submission.csv", out.transpose(), '%d',
+                   delimiter=",", header="ids,label", comments='')
 
 
 def checkArgs():
@@ -171,4 +181,4 @@ if __name__ == "__main__":
     print("Completed reading test data")
 
     train(train_examples, train_labels, test_examples,
-          one_hot(test_labels), test_samples)
+          one_hot(test_labels), test_samples, ids)

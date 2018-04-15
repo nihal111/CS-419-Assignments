@@ -18,21 +18,27 @@ def create_graph():
         # now declare the output data placeholder - 9 labels
         y = tf.placeholder(tf.float32, [None, 9])
 
-        # now declare the weights connecting the input to the hidden layer
         W1 = tf.Variable(tf.random_normal(
             [90, HIDDEN_LAYER_NODES], stddev=0.03), name='W1')
         b1 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b1')
-        # and the weights connecting the hidden layer to the output layer
-        W2 = tf.Variable(tf.random_normal(
-            [HIDDEN_LAYER_NODES, 9], stddev=0.03), name='W2')
-        b2 = tf.Variable(tf.random_normal([9]), name='b2')
+
+        W3 = tf.Variable(tf.random_normal(
+            [HIDDEN_LAYER_NODES, 9], stddev=0.03), name='W3')
+        b3 = tf.Variable(tf.random_normal([9]), name='b3')
+
+        # W2 = tf.Variable(tf.random_normal(
+        #     [HIDDEN_LAYER_NODES, HIDDEN_LAYER_NODES], stddev=0.03), name='W2')
+        # b2 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b2')
+        # # calculate the output of the hidden layer
+        # hidden_out1 = tf.add(tf.matmul(x, W1), b1)
+        # hidden_out1 = tf.nn.relu(hidden_out1)
 
         # calculate the output of the hidden layer
-        hidden_out = tf.add(tf.matmul(x, W1), b1)
-        hidden_out = tf.nn.relu(hidden_out)
+        hidden_out2 = tf.add(tf.matmul(x, W3), b3)
+        hidden_out2 = tf.nn.relu(hidden_out2)
 
         # output layer
-        y_ = tf.nn.relu(tf.add(tf.matmul(hidden_out, W2), b2))
+        y_ = tf.nn.relu(tf.add(tf.matmul(hidden_out2, W3), b3))
 
         y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
         cross_entropy = -tf.reduce_mean(tf.reduce_sum

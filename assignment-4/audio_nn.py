@@ -3,11 +3,11 @@ import numpy as np
 import sys
 import csv
 
-HIDDEN_LAYER_NODES = 256
+HIDDEN_LAYER_NODES = 1000
 LEARNING_RATE = 0.001
-BATCH_SIZE = 500
+BATCH_SIZE = 5000
 EPOCHS = 100
-DROPOUT_RATE = 0.6
+DROPOUT_RATE = 0.7
 
 
 def create_graph():
@@ -30,27 +30,31 @@ def create_graph():
             [HIDDEN_LAYER_NODES, 9], stddev=0.03), name='W3')
         b3 = tf.Variable(tf.random_normal([9]), name='b3')
 
-        # W2 = tf.Variable(tf.random_normal(
-        #     [HIDDEN_LAYER_NODES, HIDDEN_LAYER_NODES], stddev=0.03), name='W2')
-        # b2 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b2')
-        # # calculate the output of the hidden layer
-        # hidden_out1 = tf.add(tf.matmul(x, W1), b1)
-        # hidden_out1 = tf.nn.relu(hidden_out1)
+        W2 = tf.Variable(tf.random_normal(
+            [HIDDEN_LAYER_NODES, HIDDEN_LAYER_NODES], stddev=0.03), name='W2')
+        b2 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b2')
+        # calculate the output of the hidden layer
+        hidden_out1 = tf.add(tf.matmul(x, W1), b1)
+        hidden_out1 = tf.nn.relu(hidden_out1)
+
+        hidden_out1 = tf.nn.dropout(hidden_out1, keep_prob)
 
         # calculate the output of the hidden layer
-        hidden_out2 = tf.add(tf.matmul(x, W1), b1)
+        hidden_out2 = tf.add(tf.matmul(hidden_out1, W2), b2)
         hidden_out2 = tf.nn.relu(hidden_out2)
 
         hidden_out2 = tf.nn.dropout(hidden_out2, keep_prob)
 
         # output layer
-        y_ = tf.nn.softmax(tf.add(tf.matmul(hidden_out2, W3), b3))
+        y_ = tf.add(tf.matmul(hidden_out2, W3), b3)
 
-        y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
-        cross_entropy = -tf.reduce_mean(tf.reduce_sum
-                                        (y * tf.log(y_clipped) +
-                                         (1 - y) * tf.log(1 - y_clipped),
-                                         axis=1))
+        cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_, labels=y))
+
+        # y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
+        # cross_entropy = -tf.reduce_mean(tf.reduce_sum
+        #                                 (y * tf.log(y_clipped) +
+        #                                  (1 - y) * tf.log(1 - y_clipped),
+        #                                  axis=1))
 
         # add an optimiser
         optimiser = tf.train.AdamOptimizer(

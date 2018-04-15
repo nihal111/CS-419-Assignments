@@ -5,8 +5,9 @@ import csv
 
 HIDDEN_LAYER_NODES = 256
 LEARNING_RATE = 0.001
-BATCH_SIZE = 1000
+BATCH_SIZE = 500
 EPOCHS = 100
+DROPOUT_RATE = 0.6
 
 
 def create_graph():
@@ -17,6 +18,9 @@ def create_graph():
         x = tf.placeholder(tf.float32, [None, 90])
         # now declare the output data placeholder - 9 labels
         y = tf.placeholder(tf.float32, [None, 9])
+
+        # Dropout keep probability
+        keep_prob = tf.placeholder(tf.float32)
 
         W1 = tf.Variable(tf.random_normal(
             [90, HIDDEN_LAYER_NODES], stddev=0.03), name='W1')
@@ -36,6 +40,8 @@ def create_graph():
         # calculate the output of the hidden layer
         hidden_out2 = tf.add(tf.matmul(x, W1), b1)
         hidden_out2 = tf.nn.relu(hidden_out2)
+
+        hidden_out2 = tf.nn.dropout(hidden_out2, keep_prob)
 
         # output layer
         y_ = tf.nn.softmax(tf.add(tf.matmul(hidden_out2, W3), b3))
@@ -57,11 +63,11 @@ def create_graph():
         correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-    return graph, optimiser, init_op, accuracy, x, y, cross_entropy, y_
+    return graph, optimiser, init_op, accuracy, x, y, cross_entropy, y_, keep_prob
 
 
 def train(train_examples, train_labels, test_examples, test_labels, test_samples, ids):
-    graph, optimiser, init_op, accuracy, x, y, cross_entropy, y_ = create_graph()
+    graph, optimiser, init_op, accuracy, x, y, cross_entropy, y_, keep_prob = create_graph()
     session_conf = tf.ConfigProto(
         # device_count={
         #     "GPU":0
@@ -86,17 +92,17 @@ def train(train_examples, train_labels, test_examples, test_labels, test_samples
                 batch_x, batch_y = next_batch(
                     BATCH_SIZE, train_examples, train_labels)
                 _, c = sess.run([optimiser, cross_entropy],
-                                feed_dict={x: batch_x, y: batch_y})
+                                feed_dict={x: batch_x, y: batch_y, keep_prob:DROPOUT_RATE})
                 avg_cost += c / total_batch
                 # print("i: {}, avg_cost:{}".format(i, avg_cost))
             print("Epoch:{} cost={:.3f}".format((epoch + 1), avg_cost))
         print(sess.run(accuracy, feed_dict={
-              x: test_examples, y: test_labels}))
+              x: test_examples, y: test_labels, keep_prob:1.0}))
 
         save_path = saver.save(sess, "./save/model.ckpt")
         print("Model saved in path: %s" % save_path)
 
-        test_prediction = sess.run(y_, feed_dict={x: test_samples})
+        test_prediction = sess.run(y_, feed_dict={x: test_samples, keep_prob:1.0})
         decoded_predictions = np.argmax(test_prediction, axis=1)
         print decoded_predictions
 

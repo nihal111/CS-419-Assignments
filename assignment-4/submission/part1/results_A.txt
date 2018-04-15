@@ -1,4 +1,4 @@
-The categorization accuracy received on test set available on Kaggle is 0.51133 with
+The categorization accuracy received on test set available on Kaggle is 0.56166 with
 
 100 nodes in the hidden layer
 Learning rate of 0.001

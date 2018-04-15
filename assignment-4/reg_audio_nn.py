@@ -3,11 +3,15 @@ import numpy as np
 import sys
 import csv
 
-HIDDEN_LAYER_NODES = 1000
+HIDDEN_LAYER_NODES = 100
 LEARNING_RATE = 0.001
 BATCH_SIZE = 5000
-EPOCHS = 100
-DROPOUT_RATE = 0.7
+EPOCHS = 1000
+DROPOUT_RATE = 1.0
+
+
+mins = [0] * 91
+ptps = [0] * 91
 
 
 def create_graph():
@@ -43,15 +47,14 @@ def create_graph():
         hidden_out2 = tf.add(tf.matmul(x, W1), b1)
         hidden_out2 = tf.nn.relu(hidden_out2)
 
-        # hidden_out2 = tf.nn.dropout(hidden_out2, keep_prob)
+        hidden_out2 = tf.nn.dropout(hidden_out2, keep_prob)
 
         # output layer
         y_ = tf.add(tf.matmul(hidden_out2, W3), b3)
 
-        y_clipped = tf.clip_by_value(y_, 1922, 2011)
+        average_loss = tf.losses.mean_squared_error(y, y_)
 
-        average_loss = tf.losses.mean_squared_error(y, y_clipped)
-
+        # y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
         # cross_entropy = -tf.reduce_mean(tf.reduce_sum
         #                                 (y * tf.log(y_clipped) +
         #                                  (1 - y) * tf.log(1 - y_clipped),
@@ -65,13 +68,13 @@ def create_graph():
         init_op = tf.global_variables_initializer()
 
         # define an accuracy assessment operation
-        accuracy = tf.losses.mean_squared_error(y, y_clipped)
+        accuracy = tf.losses.mean_squared_error(y, y_)
 
     return graph, optimiser, init_op, accuracy, x, y, average_loss, y_, keep_prob
 
 
 def train(train_examples, train_labels, test_examples, test_labels, test_samples, ids):
-    graph, optimiser, init_op, accuracy, x, y, average_loss, y_clipped, keep_prob = create_graph()
+    graph, optimiser, init_op, accuracy, x, y, average_loss, y_, keep_prob = create_graph()
     session_conf = tf.ConfigProto(
         # device_count={
         #     "GPU":0
@@ -95,11 +98,12 @@ def train(train_examples, train_labels, test_examples, test_labels, test_samples
             for i in range(total_batch):
                 batch_x, batch_y = next_batch(
                     BATCH_SIZE, train_examples, train_labels)
-                _, c = sess.run([optimiser, average_loss],
-                                feed_dict={x: batch_x, y: batch_y, keep_prob: DROPOUT_RATE})
+                ans, _, c = sess.run([y_, optimiser, average_loss],
+                                     feed_dict={x: batch_x, y: batch_y, keep_prob: DROPOUT_RATE})
                 avg_cost += c / total_batch
                 # print("i: {}, avg_cost:{}".format(i, avg_cost))
             print("Epoch:{} cost={:.3f}".format((epoch + 1), avg_cost))
+            # print ans
 
         save_path = saver.save(sess, "./save-reg/model.ckpt")
         print("Model saved in path: %s" % save_path)
@@ -107,11 +111,10 @@ def train(train_examples, train_labels, test_examples, test_labels, test_samples
         print(sess.run(accuracy, feed_dict={
               x: test_examples, y: np.reshape(test_labels, (-1, 1)), keep_prob: 1.0}))
 
-
         test_prediction = sess.run(
-            y_clipped, feed_dict={x: test_samples, keep_prob: 1.0})
+            y_, feed_dict={x: test_samples, keep_prob: 1.0})
 
-        test_prediction = np.reshape(test_prediction, -1).astype(int)
+        test_prediction = np.clip(np.reshape(test_prediction, -1), 1922, 2010)
 
         out = np.asarray([ids, test_prediction])
         np.savetxt("submission-reg.csv", out.transpose(), '%d',
@@ -161,13 +164,6 @@ def next_batch(num, data, labels):
     return np.asarray(data_shuffle), np.reshape(labels_shuffle, (-1, 1))
 
 
-def one_hot(indices, depth=9):
-    one_hot_labels = np.zeros((len(indices), depth))
-    one_hot_labels[np.arange(len(indices)), indices] = 1
-
-    return one_hot_labels
-
-
 if __name__ == "__main__":
     # Check args
     train_file, dev_file, test_file = checkArgs()
@@ -175,27 +171,32 @@ if __name__ == "__main__":
     # Read training set data
     train_data, parameters = readCSV(train_file)
     train_examples = [[0]] * (len(parameters))
-    for i in xrange(0, len(parameters)):
+    train_labels = np.array([float(x) for x in train_data[parameters[0]]])
+    for i in xrange(1, len(parameters)):
         train_examples[i] = [float(x) for x in train_data[parameters[i]]]
-    train_labels = np.array(train_examples[0]).astype(int)
+        mins[i], ptps[i] = np.min(train_examples[i]), np.ptp(train_examples[i])
+        train_examples[i] = [(float(x) - mins[i]) / ptps[i]
+                             for x in train_data[parameters[i]]]
     train_examples = np.array(train_examples[1:]).transpose()
     print("Completed reading training data")
 
     # Read dev set data
     dev_data, parameters = readCSV(dev_file)
     test_examples = [[0]] * (len(parameters))
-    for i in xrange(0, len(parameters)):
-        test_examples[i] = [float(x) for x in dev_data[parameters[i]]]
-    test_labels = np.array(test_examples[0]).astype(int)
+    test_labels = np.array([float(x) for x in dev_data[parameters[0]]])
+    for i in xrange(1, len(parameters)):
+        test_examples[i] = [(float(x) - mins[i]) / ptps[i]
+                            for x in dev_data[parameters[i]]]
     test_examples = np.array(test_examples[1:]).transpose()
     print("Completed reading dev data")
 
     # Read dev set data
     test_data, parameters = readCSV(test_file)
     test_samples = [[0]] * (len(parameters))
-    for i in xrange(0, len(parameters)):
-        test_samples[i] = [float(x) for x in test_data[parameters[i]]]
-    ids = np.array(test_samples[0]).astype(int)
+    ids = np.array([float(x) for x in test_data[parameters[0]]]).astype(int)
+    for i in xrange(1, len(parameters)):
+        test_samples[i] = [(float(x) - mins[i]) / ptps[i]
+                           for x in test_data[parameters[i]]]
     test_samples = np.array(test_samples[1:]).transpose()
     print("Completed reading test data")
 

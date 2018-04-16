@@ -1,0 +1,10 @@
+HIDDEN_LAYER_NODES = 256
+LEARNING_RATE = 0.001
+BATCH_SIZE = 5000
+EPOCHS = 10000
+
+Inputs scaled as (x- min)/ptp
+ReLU activation on hidden layer and linear(None) activation on output layer.
+
+
+Mean Squared Error on Kaggle: 94.93500

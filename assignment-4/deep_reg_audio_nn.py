@@ -3,13 +3,13 @@ import numpy as np
 import sys
 import csv
 
-HIDDEN_LAYER_NODES = 256
-LEARNING_RATE = 0.001
+HIDDEN_LAYER_NODES = 500
+LEARNING_RATE = 0.0000001
 BATCH_SIZE = 5000
-EPOCHS = 10000
+EPOCHS = 10
 DROPOUT_RATE = 1.0
 
-SAVE_PATH = "./save-reg/model.ckpt"
+SAVE_PATH = "./save-reg_alt/model.ckpt"
 
 mins = [0] * 91
 ptps = [0] * 91
@@ -27,31 +27,51 @@ def create_graph():
         # Dropout keep probability
         keep_prob = tf.placeholder(tf.float32)
 
-        W1 = tf.Variable(tf.random_normal(
-            [90, HIDDEN_LAYER_NODES], stddev=0.03), name='W1')
-        b1 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b1')
+        # W1 = tf.Variable(tf.random_normal(
+        #     [90, HIDDEN_LAYER_NODES], stddev=0.03), name='W1')
+        # b1 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b1')
 
-        W3 = tf.Variable(tf.random_normal(
-            [HIDDEN_LAYER_NODES, 1], stddev=0.03), name='W3')
-        b3 = tf.Variable(tf.random_normal([1]), name='b3')
+        # W3 = tf.Variable(tf.random_normal(
+        #     [HIDDEN_LAYER_NODES, 1], stddev=0.03), name='W3')
+        # b3 = tf.Variable(tf.random_normal([1]), name='b3')
 
         # W2 = tf.Variable(tf.random_normal(
         #     [HIDDEN_LAYER_NODES, HIDDEN_LAYER_NODES], stddev=0.03), name='W2')
         # b2 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b2')
-        # # calculate the output of the hidden layer
-        # hidden_out1 = tf.add(tf.matmul(x, W1), b1)
-        # hidden_out1 = tf.nn.relu(hidden_out1)
-
-        # hidden_out1 = tf.nn.dropout(hidden_out1, keep_prob)
 
         # calculate the output of the hidden layer
-        hidden_out2 = tf.add(tf.matmul(x, W1), b1)
-        hidden_out2 = tf.nn.relu(hidden_out2)
+        hidden_out = tf.layers.dense(
+            x, HIDDEN_LAYER_NODES, activation=tf.nn.relu)
+        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
 
-        # hidden_out2 = tf.nn.dropout(hidden_out2, keep_prob)
+        hidden_out = tf.layers.dense(
+            hidden_out, HIDDEN_LAYER_NODES, activation=tf.nn.relu)
+        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
+        hidden_out = tf.layers.dense(
+            hidden_out, HIDDEN_LAYER_NODES, activation=tf.nn.relu)
+        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
+        hidden_out = tf.layers.dense(
+            hidden_out, HIDDEN_LAYER_NODES, activation=tf.nn.relu)
+        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
+        hidden_out = tf.layers.dense(
+            hidden_out, HIDDEN_LAYER_NODES, activation=tf.nn.relu)
+        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
+        hidden_out = tf.layers.dense(
+            hidden_out, HIDDEN_LAYER_NODES, activation=tf.nn.relu)
+        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
+        hidden_out = tf.layers.dense(
+            hidden_out, HIDDEN_LAYER_NODES, activation=tf.nn.relu)
+        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
+        hidden_out = tf.layers.dense(
+            hidden_out, HIDDEN_LAYER_NODES, activation=tf.nn.relu)
+        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
+        hidden_out = tf.layers.dense(
+            hidden_out, HIDDEN_LAYER_NODES, activation=tf.nn.relu)
+        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
 
-        # output layer
-        y_ = tf.add(tf.matmul(hidden_out2, W3), b3)
+        # calculate the output of the hidden layer
+        hidden_out = tf.layers.dense(hidden_out, 1, activation=tf.nn.relu)
+        y_ = tf.nn.dropout(hidden_out, keep_prob)
 
         average_loss = tf.losses.mean_squared_error(y, y_)
 
@@ -112,7 +132,6 @@ def train(train_examples, train_labels, test_examples, test_labels, test_samples
         print(sess.run(accuracy, feed_dict={
               x: test_examples, y: np.reshape(test_labels, (-1, 1)), keep_prob: 1.0}))
 
-
         save_path = saver.save(sess, SAVE_PATH)
         print("Model saved in path: %s" % save_path)
 
@@ -122,7 +141,7 @@ def train(train_examples, train_labels, test_examples, test_labels, test_samples
         test_prediction = np.clip(np.reshape(test_prediction, -1), 1922, 2011)
 
         out = np.asarray([ids, test_prediction])
-        np.savetxt("submission-reg.csv", out.transpose(), '%d',
+        np.savetxt("submission-reg_alt.csv", out.transpose(), '%d',
                    delimiter=",", header="ids,label", comments='')
 
 

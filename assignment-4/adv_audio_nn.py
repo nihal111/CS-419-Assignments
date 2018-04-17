@@ -6,11 +6,11 @@ import matplotlib.pyplot as plt
 
 
 # Hyper parameters
-HIDDEN_LAYER_NODES_OPTIONS = [300, 250, 200, 150, 100]
-DROPOUT_RATE_OPTIONS = [1.0, 0.9, 0.8]
+HIDDEN_LAYER_NODES_OPTIONS = [250]
+DROPOUT_RATE_OPTIONS = [1.0]
 LEARNING_RATE = 0.001
-BATCH_SIZE = 50
-EPOCHS = 50
+BATCH_SIZE = 500
+EPOCHS = 10000
 
 # Changed internally, do not change
 DROPOUT_RATE = 1.0
@@ -68,6 +68,9 @@ def create_graph():
         cross_entropy = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_, labels=y))
 
+        cohen_kappa, _ = tf.contrib.metrics.cohen_kappa(
+            labels=tf.argmax(y, 1), predictions_idx=tf.argmax(y_, 1), num_classes=9)
+
         # y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
         # cross_entropy = -tf.reduce_mean(tf.reduce_sum
         #                                 (y * tf.log(y_clipped) +
@@ -121,7 +124,7 @@ def train(train_examples, train_labels, test_examples,
             global HIDDEN_LAYER_NODES, DROPOUT_RATE
             HIDDEN_LAYER_NODES = hln
             DROPOUT_RATE = d
-            SAVE_PATH = "./checkpoint-class/save_{}_{}/model.ckpt".format(
+            SAVE_PATH = "./checkpoint-class/save/model.ckpt".format(
                 hln, int(d * 10))
             SAVE_FILE = "./predictions-class/submission_{}_{}.csv".format(
                 hln, int(d * 10))
@@ -264,29 +267,35 @@ def next_batch(num, data, labels):
     sets = num / 9
     remainder = num % 9
 
-    for i in range(0, 9):
-        subset_i = data[INDICES[i]:INDICES[i + 1]]
-        assert len(subset_i) > num, \
-            "BATCH_SIZE too big, not enough samples for class {}. \
-            Limit:{}".format(i, len(subset_i))
-        labels_i = labels[INDICES[i]:INDICES[i + 1]]
+    for i in range(0, 8):
+        # subset_i = data[INDICES[i]:INDICES[i + 1]]
+        # assert len(subset_i) > num, \
+        #     "BATCH_SIZE too big, not enough samples for class {}. \
+        #     Limit:{}".format(i, len(subset_i))
+        # labels_i = labels[INDICES[i]:INDICES[i + 1]]
 
-        idx = np.arange(0, len(subset_i))
-        np.random.shuffle(idx)
-        idx = idx[:sets]
-        to_concat = np.array([subset_i[i] for i in idx])
+        idx = np.arange(INDICES[i], INDICES[i + 1])
+        values = np.random.choice(idx, sets, replace=True)
+        to_concat = np.array([data[i] for i in values])
         data_shuffle = concat(data_shuffle, to_concat)
-        to_concat = np.array([labels_i[i] for i in idx])
+        to_concat = np.array([labels[i] for i in values])
         labels_shuffle = concat(labels_shuffle, to_concat)
 
-    if remainder:
-        idx = np.arange(0, len(data))
-        np.random.shuffle(idx)
-        idx = idx[:remainder]
-        to_concat = np.array([data[i] for i in idx])
-        data_shuffle = concat(data_shuffle, to_concat)
-        to_concat = np.array([labels[i] for i in idx])
-        labels_shuffle = concat(labels_shuffle, to_concat)
+    idx = np.arange(INDICES[8], INDICES[9])
+    values = np.random.choice(idx, sets + remainder, replace=True)
+    to_concat = np.array([data[i] for i in values])
+    data_shuffle = concat(data_shuffle, to_concat)
+    to_concat = np.array([labels[i] for i in values])
+    labels_shuffle = concat(labels_shuffle, to_concat)
+
+    # if remainder:
+    #     idx = np.arange(0, len(data))
+    #     np.random.shuffle(idx)
+    #     idx = idx[:remainder]
+    #     to_concat = np.array([data[i] for i in idx])
+    #     data_shuffle = concat(data_shuffle, to_concat)
+    #     to_concat = np.array([labels[i] for i in idx])
+    #     labels_shuffle = concat(labels_shuffle, to_concat)
 
     return data_shuffle, one_hot(labels_shuffle)
 

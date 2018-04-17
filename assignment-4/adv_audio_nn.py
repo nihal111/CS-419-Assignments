@@ -7,10 +7,10 @@ import matplotlib.pyplot as plt
 
 # Hyper parameters
 HIDDEN_LAYER_NODES_OPTIONS = [250]
-DROPOUT_RATE_OPTIONS = [1.0]
-LEARNING_RATE = 0.001
+DROPOUT_RATE_OPTIONS = [0.99]
+LEARNING_RATE = 0.00001
 BATCH_SIZE = 500
-EPOCHS = 10000
+EPOCHS = 20
 
 # Changed internally, do not change
 DROPOUT_RATE = 1.0
@@ -33,7 +33,7 @@ def create_graph():
         # declare the training data placeholders
         # input x - 12 avg + 78 cov = 90
         x = tf.placeholder(tf.float32, [None, INPUT_NODES])
-        # now declare the output data placeholder - 9 labels
+        # now declare the output data placeholdedr - 9 labels
         y = tf.placeholder(tf.float32, [None, 9])
 
         # Dropout keep probability
@@ -67,9 +67,7 @@ def create_graph():
 
         cross_entropy = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_, labels=y))
-
-        cohen_kappa, _ = tf.contrib.metrics.cohen_kappa(
-            labels=tf.argmax(y, 1), predictions_idx=tf.argmax(y_, 1), num_classes=9)
+        # pos_weight = tf.constant([1.0/86, 1.0/74, 1.0/123, 1.0/1140, 1.0/4412, 1.0/7738, 1.0/15028, 1.0/43602, 1.0/77797])))
 
         # y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
         # cross_entropy = -tf.reduce_mean(tf.reduce_sum
@@ -105,7 +103,7 @@ def initialise_plot():
 def plot_graph(train_accuracy, test_accuracy):
     plt.gca().set_color_cycle(['red', 'green'])
     plt.axis([0, len(train_accuracy) +
-              1, min(train_accuracy) * 0.9, min(train_accuracy) * 1.5])
+              1, min(train_accuracy + test_accuracy), max(train_accuracy + test_accuracy)])
     plt.plot(np.arange(1, len(train_accuracy) + 1), np.array(train_accuracy))
     plt.plot(np.arange(1, len(test_accuracy) + 1), np.array(test_accuracy))
     plt.legend(['Train', 'Test'], loc='upper left')
@@ -213,7 +211,7 @@ def train(train_examples, train_labels, test_examples,
                            delimiter=",", header="ids,label", comments='')
 
     for result in results:
-        print("Loss: {:.3f}\t HIDDEN_LAYER_NODES: {}\t" +
+        print("Accuracy: {:.3f}\t HIDDEN_LAYER_NODES: {}\t" +
               "DROPOUT: {}").format(result[0], result[1], result[2])
 
 
@@ -262,40 +260,32 @@ def next_batch(num, data, labels):
     Return a total of `num` random samples and labels.
     '''
 
-    data_shuffle = np.array([])
-    labels_shuffle = np.array([])
-    sets = num / 9
-    remainder = num % 9
+    # data_shuffle = np.array([])
+    # labels_shuffle = np.array([])
+    # sets = num / 9
+    # remainder = num % 9
 
-    for i in range(0, 8):
-        # subset_i = data[INDICES[i]:INDICES[i + 1]]
-        # assert len(subset_i) > num, \
-        #     "BATCH_SIZE too big, not enough samples for class {}. \
-        #     Limit:{}".format(i, len(subset_i))
-        # labels_i = labels[INDICES[i]:INDICES[i + 1]]
+    # for i in range(0, 8):
 
-        idx = np.arange(INDICES[i], INDICES[i + 1])
-        values = np.random.choice(idx, sets, replace=True)
-        to_concat = np.array([data[i] for i in values])
-        data_shuffle = concat(data_shuffle, to_concat)
-        to_concat = np.array([labels[i] for i in values])
-        labels_shuffle = concat(labels_shuffle, to_concat)
-
-    idx = np.arange(INDICES[8], INDICES[9])
-    values = np.random.choice(idx, sets + remainder, replace=True)
-    to_concat = np.array([data[i] for i in values])
-    data_shuffle = concat(data_shuffle, to_concat)
-    to_concat = np.array([labels[i] for i in values])
-    labels_shuffle = concat(labels_shuffle, to_concat)
-
-    # if remainder:
-    #     idx = np.arange(0, len(data))
-    #     np.random.shuffle(idx)
-    #     idx = idx[:remainder]
-    #     to_concat = np.array([data[i] for i in idx])
+    #     idx = np.arange(INDICES[i], INDICES[i + 1])
+    #     values = np.random.choice(idx, sets, replace=True)
+    #     to_concat = np.array([data[i] for i in values])
     #     data_shuffle = concat(data_shuffle, to_concat)
-    #     to_concat = np.array([labels[i] for i in idx])
+    #     to_concat = np.array([labels[i] for i in values])
     #     labels_shuffle = concat(labels_shuffle, to_concat)
+
+    # idx = np.arange(INDICES[8], INDICES[9])
+    # values = np.random.choice(idx, sets + remainder, replace=True)
+    # to_concat = np.array([data[i] for i in values])
+    # data_shuffle = concat(data_shuffle, to_concat)
+    # to_concat = np.array([labels[i] for i in values])
+    # labels_shuffle = concat(labels_shuffle, to_concat)
+
+    idx = np.arange(0, len(data))
+    np.random.shuffle(idx)
+    idx = idx[:num]
+    data_shuffle = [data[i] for i in idx]
+    labels_shuffle = np.asarray([labels[i] for i in idx])
 
     return data_shuffle, one_hot(labels_shuffle)
 
@@ -344,8 +334,6 @@ if __name__ == "__main__":
         INDICES.append(np.argmax(train_labels == i))
     INDICES.append(len(train_labels))
 
-    print INDICES
-
     print("Completed reading training data")
 
     ###################
@@ -368,6 +356,20 @@ if __name__ == "__main__":
             test_examples.append(np.array(test_examples[a]) ** d)
 
     test_examples = np.array(test_examples[1:]).transpose()
+
+    labels_idx_asc = test_labels.argsort()
+    test_examples = test_examples[labels_idx_asc]
+    test_labels = test_labels[labels_idx_asc]
+
+    IND = []
+
+    for i in xrange(0, 9):
+        IND.append(np.argmax(test_labels == i))
+    IND.append(len(test_labels))
+
+    print IND
+    # test_labels = test_labels[:5000]
+    # test_examples = test_examples[:5000]
     print("Completed reading dev data")
 
     ###################

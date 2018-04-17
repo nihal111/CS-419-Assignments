@@ -6,18 +6,21 @@ import matplotlib.pyplot as plt
 
 
 # Hyper parameters
-HIDDEN_LAYER_NODES_OPTIONS = [250]
-DROPOUT_RATE_OPTIONS = [0.8]
-LEARNING_RATE = 0.00001
+HIDDEN_LAYER_NODES_OPTIONS = [250, 300]
+DROPOUT_RATE_OPTIONS = [1.0, 0.9]
+BALANCED_OPTIONS = [True, False]
+
+LEARNING_RATE = 0.001
 BATCH_SIZE = 500
-EPOCHS = 20
+EPOCHS = 200
 
 # Changed internally, do not change
 DROPOUT_RATE = 1.0
 HIDDEN_LAYER_NODES = 100
+BALANCED = False
 
-SAVE_PATH = "./checkpoint-class/save/model.ckpt"
-SAVE_FILE = "./predictions-class/submission.csv"
+SAVE_DIR = "./checkpoint-class/ensemble/model"
+SAVE_FILE = "./predictions-class/submission-ensemble.csv"
 
 mins = [0] * 91
 ptps = [0] * 91
@@ -94,8 +97,8 @@ def initialise_plot():
     plt.ion()
     plt.show()
     plt.gcf().clear()
-    plt.title('HLN={} LR={} BS={} DR={}'.format(
-        HIDDEN_LAYER_NODES, LEARNING_RATE, BATCH_SIZE, DROPOUT_RATE))
+    plt.title('BAL={} HLN={} LR={} BS={} DR={}'.format(
+        BALANCED, HIDDEN_LAYER_NODES, LEARNING_RATE, BATCH_SIZE, DROPOUT_RATE))
     plt.xlabel('Epoch')
     plt.ylabel('MSE')
 
@@ -115,110 +118,137 @@ def train(train_examples, train_labels, test_examples,
           test_labels, test_samples, ids):
 
     results = np.zeros((len(HIDDEN_LAYER_NODES_OPTIONS) *
-                        len(DROPOUT_RATE_OPTIONS), 3))
+                        len(DROPOUT_RATE_OPTIONS) *
+                        len(BALANCED_OPTIONS), 4))
+    test_prediction_list = np.array([])
+    dev_prediction_list = np.array([])
     cnt = 0
-    for hln in HIDDEN_LAYER_NODES_OPTIONS:
-        for d in DROPOUT_RATE_OPTIONS:
-            global HIDDEN_LAYER_NODES, DROPOUT_RATE
-            HIDDEN_LAYER_NODES = hln
-            DROPOUT_RATE = d
-            SAVE_PATH = "./checkpoint-class/save/model.ckpt".format(
-                hln, int(d * 10))
-            SAVE_FILE = "./predictions-class/submission_{}_{}.csv".format(
-                hln, int(d * 10))
+    for b in BALANCED_OPTIONS:
+        for hln in HIDDEN_LAYER_NODES_OPTIONS:
+            for d in DROPOUT_RATE_OPTIONS:
+                global HIDDEN_LAYER_NODES, DROPOUT_RATE, BALANCED
+                HIDDEN_LAYER_NODES = hln
+                DROPOUT_RATE = d
+                BALANCED = b
+                SAVE_PATH = SAVE_DIR + str(cnt)
+                SAVE_FILE = "./predictions-class/submission_{}_{}.csv".format(
+                    hln, int(d * 10))
 
-            graph, optimiser, init_op, accuracy, x, y, \
-                cross_entropy, y_, keep_prob = create_graph()
-            session_conf = tf.ConfigProto(
-                # device_count={
-                #     "GPU":0
-                #     }
-                gpu_options=tf.GPUOptions(
-                    allow_growth=True,
-                ),
-            )
-            with tf.Session(graph=graph, config=session_conf) as sess:
-                saver = tf.train.Saver()
-                try:
-                    saver.restore(sess, SAVE_PATH)
-                    print("Model restored.")
-                except:
-                    # initialise the variables
-                    sess.run(init_op)
-                    print("Model initialised.")
-                total_batch = int(len(train_examples) / BATCH_SIZE)
-                train_accuracy = []
-                test_accuracy = []
-                initialise_plot()
-                for epoch in range(EPOCHS):
-                    avg_cost = 0
-                    for i in range(total_batch):
-                        batch_x, batch_y = next_batch(
-                            BATCH_SIZE, train_examples, train_labels)
-                        _, c = sess.run([optimiser, cross_entropy],
-                                        feed_dict={x: batch_x,
-                                                   y: batch_y,
-                                                   keep_prob: d})
-                        avg_cost += c / total_batch
-                        # print("i: {}, avg_cost:{}".format(i, avg_cost))
+                graph, optimiser, init_op, accuracy, x, y, \
+                    cross_entropy, y_, keep_prob = create_graph()
+                session_conf = tf.ConfigProto(
+                    # device_count={
+                    #     "GPU":0
+                    #     }
+                    gpu_options=tf.GPUOptions(
+                        allow_growth=True,
+                    ),
+                )
+                with tf.Session(graph=graph, config=session_conf) as sess:
+                    saver = tf.train.Saver()
+                    try:
+                        saver.restore(sess, SAVE_PATH)
+                        print("Model restored.")
+                    except:
+                        # initialise the variables
+                        sess.run(init_op)
+                        print("Model initialised.")
+                    print("\n\nBALANCED: {}\tHIDDEN_LAYER_NODES: {}\t" +
+                          "DROPOUT: {}").format(b, hln, d)
+                    total_batch = int(len(train_examples) / BATCH_SIZE)
+                    train_accuracy = []
+                    test_accuracy = []
+                    initialise_plot()
+                    for epoch in range(EPOCHS):
+                        avg_cost = 0
+                        for i in range(total_batch):
+                            batch_x, batch_y = next_batch(
+                                BATCH_SIZE, train_examples, train_labels, b)
+                            _, c = sess.run([optimiser, cross_entropy],
+                                            feed_dict={x: batch_x,
+                                                       y: batch_y,
+                                                       keep_prob: d})
+                            avg_cost += c / total_batch
+                            # print("i: {}, avg_cost:{}".format(i, avg_cost))
 
-                    train_acc = sess.run(accuracy, feed_dict={
-                        x: train_examples,
-                        y: one_hot(train_labels),
-                        keep_prob: 1.0})
+                        train_acc = sess.run(accuracy, feed_dict={
+                            x: train_examples,
+                            y: one_hot(train_labels),
+                            keep_prob: 1.0})
 
-                    test_acc = sess.run(accuracy, feed_dict={
-                        x: test_examples,
-                        y: one_hot(test_labels),
-                        keep_prob: 1.0})
+                        test_acc = sess.run(accuracy, feed_dict={
+                            x: test_examples,
+                            y: one_hot(test_labels),
+                            keep_prob: 1.0})
 
-                    print("Epoch:{}\tTrain Acc={:.3f}\tTest Acc={:.3f}".format(
-                        (epoch + 1), train_acc, test_acc))
+                        print("Epoch:{}\tTrain Acc={:.3f}\tTest Acc={:.3f}".format(
+                            (epoch + 1), train_acc, test_acc))
 
-                    train_accuracy.append(train_acc)
-                    test_accuracy.append(test_acc)
+                        train_accuracy.append(train_acc)
+                        test_accuracy.append(test_acc)
 
-                    plot_graph(train_accuracy, test_accuracy)
+                        plot_graph(train_accuracy, test_accuracy)
 
-                    # print ans
-                    if ((epoch + 1) % 100 == 0):
-                        save_path = saver.save(sess, SAVE_PATH)
-                        print("Model saved in path: %s" % save_path)
+                        # print ans
+                        if ((epoch + 1) % 100 == 0):
+                            save_path = saver.save(sess, SAVE_PATH)
+                            print("Model saved in path: %s" % save_path)
 
-                print(test_acc)
+                    print("\n")
 
-                # store the data
-                results[cnt, 0] = test_acc
-                results[cnt, 1] = hln
-                results[cnt, 2] = d
-                cnt += 1
+                    # store the data
+                    results[cnt, 0] = test_acc
+                    results[cnt, 1] = b
+                    results[cnt, 2] = hln
+                    results[cnt, 3] = d
+                    cnt += 1
 
-                save_path = saver.save(sess, SAVE_PATH)
-                print("Model saved in path: %s" % save_path)
+                    save_path = saver.save(sess, SAVE_PATH)
+                    print("Model saved in path: %s" % save_path)
 
-                plt.savefig('./images-class/{}_{}_{}_{}.png'.format(hln, d,
-                                                                    LEARNING_RATE,
-                                                                    BATCH_SIZE),
-                            bbox_inches='tight')
+                    plt.savefig('./images-class/{}_{}_{}_{}_{}.png'.format(b, hln, d,
+                                                                           LEARNING_RATE,
+                                                                           BATCH_SIZE),
+                                bbox_inches='tight')
 
-                test_prediction = sess.run(
-                    y_, feed_dict={x: test_samples, keep_prob: 1.0})
-                decoded_predictions = np.argmax(test_prediction, axis=1)
-                print decoded_predictions
+                    test_prediction = sess.run(
+                        y_, feed_dict={x: test_samples, keep_prob: 1.0})
+                    decoded_predictions = np.argmax(test_prediction, axis=1)
+                    print decoded_predictions
 
-                out = np.asarray([ids, decoded_predictions])
-                np.savetxt(SAVE_FILE, out.transpose(), '%d',
-                           delimiter=",", header="ids,label", comments='')
+                    test_prediction_list = concat(
+                        test_prediction_list, np.array([decoded_predictions]))
+
+                    dev_predictions = sess.run(y_, feed_dict={
+                        x: test_examples, keep_prob: 1.0})
+
+                    dev_prediction_list = concat(
+                        dev_prediction_list, np.array([dev_predictions]))
 
     for result in results:
-        print("Accuracy: {:.3f}\t HIDDEN_LAYER_NODES: {}\t" +
-              "DROPOUT: {}").format(result[0], result[1], result[2])
+        print("Accuracy: {:.3f}\t BALANCED: {}\tHIDDEN_LAYER_NODES: {}\t" +
+              "DROPOUT: {}").format(result[0], result[1], result[2], result[3])
+
+    dev_predictions = np.rint(
+        np.mean(dev_prediction_list, axis=0)).astype(int)
+
+    correct_prediction = np.equal(
+        np.argmax(one_hot(test_labels), 1), np.argmax(dev_predictions, 1))
+    print("\nCombined Accuracy: {}".format(
+        np.mean(correct_prediction.astype(float))))
+
+    decoded_predictions = np.rint(
+        np.mean(test_prediction_list, axis=0)).astype(int)
+    print decoded_predictions
+    out = np.asarray([ids, decoded_predictions])
+    np.savetxt(SAVE_FILE, out.transpose(), '%d',
+               delimiter=",", header="ids,label", comments='')
 
 
 def checkArgs():
     if (len(sys.argv) != 4):
         print "Please enter three arguments. For instance, run: \
-        \npython adv_audio_nn.py train_class.csv dev_class.csv test-class.csv"
+        \npython ensemble_audio_nn.py train_class.csv dev_class.csv test-class.csv"
         exit(0)
 
     train_file = sys.argv[1]
@@ -255,37 +285,37 @@ def concat(X, Y):
 INDICES = []
 
 
-def next_batch(num, data, labels):
+def next_batch(num, data, labels, balanced=False):
     '''
     Return a total of `num` random samples and labels.
     '''
+    if balanced:
+        data_shuffle = np.array([])
+        labels_shuffle = np.array([])
+        sets = num / 9
+        remainder = num % 9
 
-    # data_shuffle = np.array([])
-    # labels_shuffle = np.array([])
-    # sets = num / 9
-    # remainder = num % 9
+        for i in range(0, 8):
 
-    # for i in range(0, 8):
+            idx = np.arange(INDICES[i], INDICES[i + 1])
+            values = np.random.choice(idx, sets, replace=True)
+            to_concat = np.array([data[i] for i in values])
+            data_shuffle = concat(data_shuffle, to_concat)
+            to_concat = np.array([labels[i] for i in values])
+            labels_shuffle = concat(labels_shuffle, to_concat)
 
-    #     idx = np.arange(INDICES[i], INDICES[i + 1])
-    #     values = np.random.choice(idx, sets, replace=True)
-    #     to_concat = np.array([data[i] for i in values])
-    #     data_shuffle = concat(data_shuffle, to_concat)
-    #     to_concat = np.array([labels[i] for i in values])
-    #     labels_shuffle = concat(labels_shuffle, to_concat)
-
-    # idx = np.arange(INDICES[8], INDICES[9])
-    # values = np.random.choice(idx, sets + remainder, replace=True)
-    # to_concat = np.array([data[i] for i in values])
-    # data_shuffle = concat(data_shuffle, to_concat)
-    # to_concat = np.array([labels[i] for i in values])
-    # labels_shuffle = concat(labels_shuffle, to_concat)
-
-    idx = np.arange(0, len(data))
-    np.random.shuffle(idx)
-    idx = idx[:num]
-    data_shuffle = [data[i] for i in idx]
-    labels_shuffle = np.asarray([labels[i] for i in idx])
+        idx = np.arange(INDICES[8], INDICES[9])
+        values = np.random.choice(idx, sets + remainder, replace=True)
+        to_concat = np.array([data[i] for i in values])
+        data_shuffle = concat(data_shuffle, to_concat)
+        to_concat = np.array([labels[i] for i in values])
+        labels_shuffle = concat(labels_shuffle, to_concat)
+    else:
+        idx = np.arange(0, len(data))
+        np.random.shuffle(idx)
+        idx = idx[:num]
+        data_shuffle = [data[i] for i in idx]
+        labels_shuffle = np.asarray([labels[i] for i in idx])
 
     return data_shuffle, one_hot(labels_shuffle)
 

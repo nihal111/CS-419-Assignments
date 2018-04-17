@@ -10,18 +10,18 @@ HIDDEN_LAYER_NODES_OPTIONS = [250]
 DROPOUT_RATE_OPTIONS = [1.0]
 BALANCED_OPTIONS = [False]
 
-LEARNING_RATE = 0.00001
+LEARNING_RATE = 0.0001
 BATCH_SIZE = 500
-EPOCHS = 100
+EPOCHS = 10
 
 # Changed internally, do not change
 DROPOUT_RATE = 1.0
 HIDDEN_LAYER_NODES = 100
-BALANCED = True
+BALANCED = False
 
 PLOTTING = False
-SAVE_DIR = "./checkpoint-class/ensemble/model"
-SAVE_FILE = "./predictions-class/submission-ensemble.csv"
+SAVE_DIR = "./checkpoint-reg/ensemble/model"
+SAVE_FILE = "./predictions-reg/submission-ensemble.csv"
 
 mins = [0] * 91
 ptps = [0] * 91
@@ -38,7 +38,7 @@ def create_graph():
         # input x - 12 avg + 78 cov = 90
         x = tf.placeholder(tf.float32, [None, INPUT_NODES])
         # now declare the output data placeholdedr - 9 labels
-        y = tf.placeholder(tf.float32, [None, 9])
+        y = tf.placeholder(tf.float32, [None, 1])
 
         # Dropout keep probability
         keep_prob = tf.placeholder(tf.float32)
@@ -48,8 +48,8 @@ def create_graph():
         b1 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b1')
 
         W3 = tf.Variable(tf.random_normal(
-            [HIDDEN_LAYER_NODES, 9], stddev=0.03), name='W3')
-        b3 = tf.Variable(tf.random_normal([9]), name='b3')
+            [HIDDEN_LAYER_NODES, 1], stddev=0.03), name='W3')
+        b3 = tf.Variable(tf.random_normal([1]), name='b3')
 
         W2 = tf.Variable(tf.random_normal(
             [HIDDEN_LAYER_NODES, HIDDEN_LAYER_NODES], stddev=0.03), name='W2')
@@ -64,34 +64,23 @@ def create_graph():
         hidden_out2 = tf.add(tf.matmul(hidden_out1, W2), b2)
         hidden_out2 = tf.nn.relu(hidden_out2)
 
-        hidden_out2 = tf.nn.dropout(hidden_out2, keep_prob)
-
         # output layer
         y_ = tf.add(tf.matmul(hidden_out2, W3), b3)
 
-        cross_entropy = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_, labels=y))
-        # pos_weight = tf.constant([1.0/86, 1.0/74, 1.0/123, 1.0/1140, 1.0/4412, 1.0/7738, 1.0/15028, 1.0/43602, 1.0/77797])))
-
-        # y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
-        # cross_entropy = -tf.reduce_mean(tf.reduce_sum
-        #                                 (y * tf.log(y_clipped) +
-        #                                  (1 - y) * tf.log(1 - y_clipped),
-        #                                  axis=1))
+        average_loss = tf.losses.mean_squared_error(y, y_)
 
         # add an optimiser
         optimiser = tf.train.AdamOptimizer(
-            learning_rate=LEARNING_RATE).minimize(cross_entropy)
+            learning_rate=LEARNING_RATE).minimize(average_loss)
 
         # finally setup the initialisation operator
         init_op = tf.global_variables_initializer()
 
         # define an accuracy assessment operation
-        correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
-        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        accuracy = tf.losses.mean_squared_error(y, y_)
 
     return graph, optimiser, init_op, accuracy, x, y,  \
-        cross_entropy, y_, keep_prob
+        average_loss, y_, keep_prob
 
 
 def initialise_plot():
@@ -143,7 +132,7 @@ def train(train_examples, train_labels, test_examples,
                 SAVE_PATH = SAVE_DIR + str(cnt)
 
                 graph, optimiser, init_op, accuracy, x, y, \
-                    cross_entropy, y_, keep_prob = create_graph()
+                    average_loss, y_, keep_prob = create_graph()
                 session_conf = tf.ConfigProto(
                     # device_count={
                     #     "GPU":0
@@ -173,7 +162,7 @@ def train(train_examples, train_labels, test_examples,
                         for i in range(total_batch):
                             batch_x, batch_y = next_batch(
                                 BATCH_SIZE, train_examples, train_labels, b)
-                            _, c = sess.run([optimiser, cross_entropy],
+                            _, c = sess.run([optimiser, average_loss],
                                             feed_dict={x: batch_x,
                                                        y: batch_y,
                                                        keep_prob: d})
@@ -182,12 +171,12 @@ def train(train_examples, train_labels, test_examples,
 
                         train_acc = sess.run(accuracy, feed_dict={
                             x: train_examples,
-                            y: one_hot(train_labels),
+                            y: np.reshape(train_labels, (-1, 1)),
                             keep_prob: 1.0})
 
                         test_acc = sess.run(accuracy, feed_dict={
                             x: test_examples,
-                            y: one_hot(test_labels),
+                            y: np.reshape(test_labels, (-1, 1)),
                             keep_prob: 1.0})
 
                         print("Epoch:{}\tTrain Acc={:.3f}\tTest Acc={:.3f}".format(
@@ -219,37 +208,40 @@ def train(train_examples, train_labels, test_examples,
                     if PLOTTING:
                         save_plot()
 
-                    test_prediction = sess.run(
+                    test_predictions = sess.run(
                         y_, feed_dict={x: test_samples, keep_prob: 1.0})
-                    decoded_predictions = np.argmax(test_prediction, axis=1)
-                    print decoded_predictions
+
+                    test_predictions = np.clip(np.reshape(
+                        test_predictions, -1), 1922, 2011)
 
                     test_prediction_list = concat(
-                        test_prediction_list, np.array([decoded_predictions]))
+                        test_prediction_list, np.array([test_predictions]))
 
                     dev_predictions = sess.run(
                         y_, feed_dict={x: test_examples, keep_prob: 1.0})
-                    decoded_predictions = np.argmax(dev_predictions, axis=1)
+
+                    dev_predictions = np.clip(np.reshape(
+                        dev_predictions, -1), 1922, 2011)
 
                     dev_prediction_list = concat(
-                        dev_prediction_list, np.array([decoded_predictions]))
+                        dev_prediction_list, np.array([dev_predictions]))
 
     for result in results:
-        print("Accuracy: {:.3f}\t BALANCED: {}\tHIDDEN_LAYER_NODES: {}\t" +
+        print("MSE: {:.3f}\t BALANCED: {}\tHIDDEN_LAYER_NODES: {}\t" +
               "DROPOUT: {}").format(result[0], result[1], result[2], result[3])
 
     dev_predictions = np.rint(
         np.mean(dev_prediction_list, axis=0)).astype(int)
 
-    correct_prediction = np.equal(
-        np.argmax(one_hot(test_labels), 1), dev_predictions)
-    print("\nCombined Accuracy: {}".format(
-        np.mean(correct_prediction.astype(float))))
+    mse = ((dev_predictions - test_labels) ** 2).mean()
+    print("\nCombined MSE: {}".format(mse))
 
-    decoded_predictions = np.rint(
+    test_predictions = np.rint(
         np.mean(test_prediction_list, axis=0)).astype(int)
+    test_predictions = np.clip(np.reshape(
+        test_predictions, -1), 1922, 2011)
 
-    out = np.asarray([ids, decoded_predictions])
+    out = np.asarray([ids, test_predictions])
     np.savetxt(SAVE_FILE, out.transpose(), '%d',
                delimiter=",", header="ids,label", comments='')
 
@@ -257,7 +249,7 @@ def train(train_examples, train_labels, test_examples,
 def checkArgs():
     if (len(sys.argv) != 4):
         print "Please enter three arguments. For instance, run: \
-        \npython ensemble_audio_nn.py train_class.csv dev_class.csv test-class.csv"
+        \npython ensemble_reg_audio_nn.py train_reg.csv dev_reg.csv test-reg.csv"
         exit(0)
 
     train_file = sys.argv[1]
@@ -298,42 +290,13 @@ def next_batch(num, data, labels, balanced=False):
     '''
     Return a total of `num` random samples and labels.
     '''
-    if balanced:
-        data_shuffle = np.array([])
-        labels_shuffle = np.array([])
-        sets = num / 9
-        remainder = num % 9
+    idx = np.arange(0, len(data))
+    np.random.shuffle(idx)
+    idx = idx[:num]
+    data_shuffle = [data[i] for i in idx]
+    labels_shuffle = np.asarray([labels[i] for i in idx])
 
-        for i in range(0, 8):
-
-            idx = np.arange(INDICES[i], INDICES[i + 1])
-            values = np.random.choice(idx, sets, replace=True)
-            to_concat = np.array([data[i] for i in values])
-            data_shuffle = concat(data_shuffle, to_concat)
-            to_concat = np.array([labels[i] for i in values])
-            labels_shuffle = concat(labels_shuffle, to_concat)
-
-        idx = np.arange(INDICES[8], INDICES[9])
-        values = np.random.choice(idx, sets + remainder, replace=True)
-        to_concat = np.array([data[i] for i in values])
-        data_shuffle = concat(data_shuffle, to_concat)
-        to_concat = np.array([labels[i] for i in values])
-        labels_shuffle = concat(labels_shuffle, to_concat)
-    else:
-        idx = np.arange(0, len(data))
-        np.random.shuffle(idx)
-        idx = idx[:num]
-        data_shuffle = [data[i] for i in idx]
-        labels_shuffle = np.asarray([labels[i] for i in idx])
-
-    return data_shuffle, one_hot(labels_shuffle)
-
-
-def one_hot(indices, depth=9):
-    one_hot_labels = np.zeros((len(indices), depth))
-    one_hot_labels[np.arange(len(indices)), indices] = 1
-
-    return one_hot_labels
+    return data_shuffle, np.reshape(labels_shuffle, (-1, 1))
 
 
 if __name__ == "__main__":

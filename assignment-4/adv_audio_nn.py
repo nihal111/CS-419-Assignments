@@ -4,19 +4,20 @@ import sys
 import csv
 import matplotlib.pyplot as plt
 
+
 # Hyper parameters
-HIDDEN_LAYER_NODES_OPTIONS = [300]
-DROPOUT_RATE_OPTIONS = [1.0]
+HIDDEN_LAYER_NODES_OPTIONS = [300, 250, 200, 150, 100]
+DROPOUT_RATE_OPTIONS = [1.0, 0.9, 0.8]
 LEARNING_RATE = 0.001
-BATCH_SIZE = 5000
-EPOCHS = 100
+BATCH_SIZE = 50
+EPOCHS = 50
 
 # Changed internally, do not change
 DROPOUT_RATE = 1.0
 HIDDEN_LAYER_NODES = 100
 
-SAVE_PATH = "./checkpoint-reg/save/model.ckpt"
-SAVE_FILE = "./predictions-reg/submission.csv"
+SAVE_PATH = "./checkpoint-class/save/model.ckpt"
+SAVE_FILE = "./predictions-class/submission.csv"
 
 mins = [0] * 91
 ptps = [0] * 91
@@ -33,53 +34,59 @@ def create_graph():
         # input x - 12 avg + 78 cov = 90
         x = tf.placeholder(tf.float32, [None, INPUT_NODES])
         # now declare the output data placeholder - 9 labels
-        y = tf.placeholder(tf.float32, [None, 1])
+        y = tf.placeholder(tf.float32, [None, 9])
 
         # Dropout keep probability
         keep_prob = tf.placeholder(tf.float32)
 
-        # W1 = tf.Variable(tf.random_normal(
-        #     [90, HIDDEN_LAYER_NODES], stddev=0.03), name='W1')
-        # b1 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b1')
+        W1 = tf.Variable(tf.random_normal(
+            [INPUT_NODES, HIDDEN_LAYER_NODES], stddev=0.03), name='W1')
+        b1 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b1')
 
-        # W3 = tf.Variable(tf.random_normal(
-        #     [HIDDEN_LAYER_NODES, 1], stddev=0.03), name='W3')
-        # b3 = tf.Variable(tf.random_normal([1]), name='b3')
+        W3 = tf.Variable(tf.random_normal(
+            [HIDDEN_LAYER_NODES, 9], stddev=0.03), name='W3')
+        b3 = tf.Variable(tf.random_normal([9]), name='b3')
 
-        # W2 = tf.Variable(tf.random_normal(
-        #     [HIDDEN_LAYER_NODES, HIDDEN_LAYER_NODES],
-        #     stddev=0.03),
-        #     name='W2')
-        # b2 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b2')
+        W2 = tf.Variable(tf.random_normal(
+            [HIDDEN_LAYER_NODES, HIDDEN_LAYER_NODES], stddev=0.03), name='W2')
+        b2 = tf.Variable(tf.random_normal([HIDDEN_LAYER_NODES]), name='b2')
+        # calculate the output of the hidden layer
+        hidden_out1 = tf.add(tf.matmul(x, W1), b1)
+        hidden_out1 = tf.nn.relu(hidden_out1)
+
+        hidden_out1 = tf.nn.dropout(hidden_out1, keep_prob)
 
         # calculate the output of the hidden layer
-        hidden_out = tf.contrib.layers.fully_connected(
-            x, HIDDEN_LAYER_NODES, activation_fn=tf.nn.relu)
-        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
+        hidden_out2 = tf.add(tf.matmul(hidden_out1, W2), b2)
+        hidden_out2 = tf.nn.relu(hidden_out2)
 
-        hidden_out = tf.contrib.layers.fully_connected(
-            hidden_out, HIDDEN_LAYER_NODES, activation_fn=tf.nn.relu)
-        hidden_out = tf.nn.dropout(hidden_out, keep_prob)
+        hidden_out2 = tf.nn.dropout(hidden_out2, keep_prob)
 
-        # calculate the output of the hidden layer
-        hidden_out = tf.contrib.layers.fully_connected(
-            hidden_out, 1, activation_fn=tf.nn.relu)
-        y_ = tf.nn.dropout(hidden_out, keep_prob)
+        # output layer
+        y_ = tf.add(tf.matmul(hidden_out2, W3), b3)
 
-        average_loss = tf.losses.mean_squared_error(y, y_)
+        cross_entropy = tf.reduce_mean(
+            tf.nn.softmax_cross_entropy_with_logits_v2(logits=y_, labels=y))
+
+        # y_clipped = tf.clip_by_value(y_, 1e-10, 0.9999999)
+        # cross_entropy = -tf.reduce_mean(tf.reduce_sum
+        #                                 (y * tf.log(y_clipped) +
+        #                                  (1 - y) * tf.log(1 - y_clipped),
+        #                                  axis=1))
 
         # add an optimiser
         optimiser = tf.train.AdamOptimizer(
-            learning_rate=LEARNING_RATE).minimize(average_loss)
+            learning_rate=LEARNING_RATE).minimize(cross_entropy)
 
         # finally setup the initialisation operator
         init_op = tf.global_variables_initializer()
 
         # define an accuracy assessment operation
-        accuracy = tf.losses.mean_squared_error(y, y_)
+        correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
+        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-    return graph, optimiser, init_op, accuracy, x, y, \
-        average_loss, y_, keep_prob
+    return graph, optimiser, init_op, accuracy, x, y,  \
+        cross_entropy, y_, keep_prob
 
 
 def initialise_plot():
@@ -114,13 +121,13 @@ def train(train_examples, train_labels, test_examples,
             global HIDDEN_LAYER_NODES, DROPOUT_RATE
             HIDDEN_LAYER_NODES = hln
             DROPOUT_RATE = d
-            SAVE_PATH = "./checkpoint-reg/save_{}_{}/model.ckpt".format(
+            SAVE_PATH = "./checkpoint-class/save_{}_{}/model.ckpt".format(
                 hln, int(d * 10))
-            SAVE_FILE = "./predictions-reg/submission_{}_{}.csv".format(
+            SAVE_FILE = "./predictions-class/submission_{}_{}.csv".format(
                 hln, int(d * 10))
 
             graph, optimiser, init_op, accuracy, x, y, \
-                average_loss, y_, keep_prob = create_graph()
+                cross_entropy, y_, keep_prob = create_graph()
             session_conf = tf.ConfigProto(
                 # device_count={
                 #     "GPU":0
@@ -138,7 +145,6 @@ def train(train_examples, train_labels, test_examples,
                     # initialise the variables
                     sess.run(init_op)
                     print("Model initialised.")
-
                 total_batch = int(len(train_examples) / BATCH_SIZE)
                 train_accuracy = []
                 test_accuracy = []
@@ -148,23 +154,28 @@ def train(train_examples, train_labels, test_examples,
                     for i in range(total_batch):
                         batch_x, batch_y = next_batch(
                             BATCH_SIZE, train_examples, train_labels)
-                        ans, _, c = sess.run([y_, optimiser, average_loss],
-                                             feed_dict={x: batch_x,
-                                                        y: batch_y,
-                                                        keep_prob: d})
+                        _, c = sess.run([optimiser, cross_entropy],
+                                        feed_dict={x: batch_x,
+                                                   y: batch_y,
+                                                   keep_prob: d})
                         avg_cost += c / total_batch
                         # print("i: {}, avg_cost:{}".format(i, avg_cost))
 
-                    acc = sess.run(accuracy, feed_dict={
-                        x: test_examples,
-                        y: np.reshape(test_labels, (-1, 1)),
+                    train_acc = sess.run(accuracy, feed_dict={
+                        x: train_examples,
+                        y: one_hot(train_labels),
                         keep_prob: 1.0})
 
-                    print("Epoch:{}\tTraining Loss={:.3f}\tTest Loss={:.3f}".format(
-                        (epoch + 1), avg_cost, acc))
+                    test_acc = sess.run(accuracy, feed_dict={
+                        x: test_examples,
+                        y: one_hot(test_labels),
+                        keep_prob: 1.0})
 
-                    train_accuracy.append(avg_cost)
-                    test_accuracy.append(acc)
+                    print("Epoch:{}\tTrain Acc={:.3f}\tTest Acc={:.3f}".format(
+                        (epoch + 1), train_acc, test_acc))
+
+                    train_accuracy.append(train_acc)
+                    test_accuracy.append(test_acc)
 
                     plot_graph(train_accuracy, test_accuracy)
 
@@ -173,8 +184,10 @@ def train(train_examples, train_labels, test_examples,
                         save_path = saver.save(sess, SAVE_PATH)
                         print("Model saved in path: %s" % save_path)
 
+                print(test_acc)
+
                 # store the data
-                results[cnt, 0] = acc
+                results[cnt, 0] = test_acc
                 results[cnt, 1] = hln
                 results[cnt, 2] = d
                 cnt += 1
@@ -182,30 +195,29 @@ def train(train_examples, train_labels, test_examples,
                 save_path = saver.save(sess, SAVE_PATH)
                 print("Model saved in path: %s" % save_path)
 
-                plt.savefig('./images-reg/{}_{}_{}_{}.png'.format(hln, d,
-                                                                  LEARNING_RATE,
-                                                                  BATCH_SIZE),
+                plt.savefig('./images-class/{}_{}_{}_{}.png'.format(hln, d,
+                                                                    LEARNING_RATE,
+                                                                    BATCH_SIZE),
                             bbox_inches='tight')
 
                 test_prediction = sess.run(
                     y_, feed_dict={x: test_samples, keep_prob: 1.0})
+                decoded_predictions = np.argmax(test_prediction, axis=1)
+                print decoded_predictions
 
-                test_prediction = np.clip(np.reshape(
-                    test_prediction, -1), 1922, 2011)
-
-                out = np.asarray([ids, test_prediction])
+                out = np.asarray([ids, decoded_predictions])
                 np.savetxt(SAVE_FILE, out.transpose(), '%d',
                            delimiter=",", header="ids,label", comments='')
 
     for result in results:
-        print("MSE: {:.3f}\t HIDDEN_LAYER_NODES: {}\t" +
+        print("Loss: {:.3f}\t HIDDEN_LAYER_NODES: {}\t" +
               "DROPOUT: {}").format(result[0], result[1], result[2])
 
 
 def checkArgs():
     if (len(sys.argv) != 4):
         print "Please enter three arguments. For instance, run: \
-        \npython deep_reg_audio_nn.py train_reg.csv dev_reg.csv test-reg.csv"
+        \npython adv_audio_nn.py train_class.csv dev_class.csv test-class.csv"
         exit(0)
 
     train_file = sys.argv[1]
@@ -232,17 +244,58 @@ def readCSV(csv_file):
     return data, parameters
 
 
+def concat(X, Y):
+    if X.size:
+        return np.concatenate([X, Y])
+    else:
+        return Y
+
+
+INDICES = []
+
+
 def next_batch(num, data, labels):
     '''
     Return a total of `num` random samples and labels.
     '''
-    idx = np.arange(0, len(data))
-    np.random.shuffle(idx)
-    idx = idx[:num]
-    data_shuffle = [data[i] for i in idx]
-    labels_shuffle = np.asarray([labels[i] for i in idx])
 
-    return np.asarray(data_shuffle), np.reshape(labels_shuffle, (-1, 1))
+    data_shuffle = np.array([])
+    labels_shuffle = np.array([])
+    sets = num / 9
+    remainder = num % 9
+
+    for i in range(0, 9):
+        subset_i = data[INDICES[i]:INDICES[i + 1]]
+        assert len(subset_i) > num, \
+            "BATCH_SIZE too big, not enough samples for class {}. \
+            Limit:{}".format(i, len(subset_i))
+        labels_i = labels[INDICES[i]:INDICES[i + 1]]
+
+        idx = np.arange(0, len(subset_i))
+        np.random.shuffle(idx)
+        idx = idx[:sets]
+        to_concat = np.array([subset_i[i] for i in idx])
+        data_shuffle = concat(data_shuffle, to_concat)
+        to_concat = np.array([labels_i[i] for i in idx])
+        labels_shuffle = concat(labels_shuffle, to_concat)
+
+    if remainder:
+        idx = np.arange(0, len(data))
+        np.random.shuffle(idx)
+        idx = idx[:remainder]
+        to_concat = np.array([data[i] for i in idx])
+        data_shuffle = concat(data_shuffle, to_concat)
+        to_concat = np.array([labels[i] for i in idx])
+        labels_shuffle = concat(labels_shuffle, to_concat)
+
+    return data_shuffle, one_hot(labels_shuffle)
+
+
+def one_hot(indices, depth=9):
+    one_hot_labels = np.zeros((len(indices), depth))
+    one_hot_labels[np.arange(len(indices)), indices] = 1
+
+    return one_hot_labels
 
 
 if __name__ == "__main__":
@@ -255,7 +308,7 @@ if __name__ == "__main__":
     # Read training set data
     train_data, parameters = readCSV(train_file)
     train_examples = [[0]] * (len(parameters))
-    train_labels = np.array([float(x) for x in train_data[parameters[0]]])
+    train_labels = np.array([int(x) for x in train_data[parameters[0]]])
     for i in xrange(1, len(parameters)):
         train_examples[i] = [float(x) for x in train_data[parameters[i]]]
         mins[i], ptps[i] = np.min(train_examples[i]), np.ptp(train_examples[i])
@@ -273,13 +326,24 @@ if __name__ == "__main__":
             train_examples.append(np.array(train_examples[a]) ** d)
 
     train_examples = np.array(train_examples[1:]).transpose()
+
+    labels_idx_asc = train_labels.argsort()
+    train_examples = train_examples[labels_idx_asc]
+    train_labels = train_labels[labels_idx_asc]
+
+    for i in xrange(0, 9):
+        INDICES.append(np.argmax(train_labels == i))
+    INDICES.append(len(train_labels))
+
+    print INDICES
+
     print("Completed reading training data")
 
     ###################
     # Read dev set data
     dev_data, parameters = readCSV(dev_file)
     test_examples = [[0]] * (len(parameters))
-    test_labels = np.array([float(x) for x in dev_data[parameters[0]]])
+    test_labels = np.array([int(x) for x in dev_data[parameters[0]]])
     for i in xrange(1, len(parameters)):
         test_examples[i] = [(float(x) - mins[i]) / ptps[i]
                             for x in dev_data[parameters[i]]]
